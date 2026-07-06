@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="80" y1="44" x2="452" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#102A43"/>
+      <stop offset=".52" stop-color="#145C72"/>
+      <stop offset="1" stop-color="#F9735B"/>
+    </linearGradient>
+    <linearGradient id="card" x1="150" y1="118" x2="382" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF8E7"/>
+      <stop offset="1" stop-color="#F8DFA8"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="124" y1="124" x2="380" y2="392" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4ADEDE"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <filter id="shadow" x="42" y="54" width="428" height="430" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="20" flood-color="#061321" flood-opacity=".28" stdDeviation="20"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <circle cx="414" cy="104" r="70" fill="#FFD166" opacity=".9"/>
+  <circle cx="92" cy="418" r="92" fill="#2DD4BF" opacity=".18"/>
+  <g filter="url(#shadow)">
+    <path fill="url(#card)" d="M151 117h157c35 0 64 29 64 64v182c0 18-15 33-33 33H151c-24 0-43-19-43-43V160c0-24 19-43 43-43Z"/>
+    <path fill="#EAB85A" d="M333 118v96l-34-22-34 22v-96h68Z"/>
+    <path fill="#FFFDF5" d="M154 162h76v188h-76c-17 0-31-14-31-31V193c0-17 14-31 31-31Z" opacity=".7"/>
+    <path fill="url(#bubble)" d="M184 198h162c32 0 58 26 58 58v14c0 32-26 58-58 58h-75l-58 47v-47h-29c-32 0-58-26-58-58v-14c0-32 26-58 58-58Z"/>
+    <text x="165" y="289" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="800" letter-spacing="-5">EP</text>
+    <path fill="none" stroke="#FFF8E7" stroke-linecap="round" stroke-width="14" d="M286 269c8-22 20-22 28 0s20 22 28 0"/>
+  </g>
+</svg>

@@ -1,0 +1,32 @@
+{
+  "name": "SnapLesson / 一拍成课",
+  "short_name": "SnapLesson",
+  "description": "一拍成课：拍一下英文课本，自动生成孩子能听、能跟读、能复习的小课程。",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8f8f0",
+  "theme_color": "#f8f8f0",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
