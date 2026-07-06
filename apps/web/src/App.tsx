@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { PwaInstallButton } from '@/components/PwaInstallButton'
 
 // Import pages (we will create them next)
 import { LessonPage } from '@/pages/LessonPage'
@@ -69,15 +70,18 @@ function App() {
             <span className="grid size-7 place-items-center rounded-[var(--radius-sm)] bg-[var(--accent)] font-[var(--font-display)] text-sm font-bold text-[var(--accent-on)]">
               S
             </span>
-            一拍成课 SnapLesson
+            一拍成课
           </div>
-          <button
-            onClick={cycleTheme}
-            className="ml-auto p-2 rounded-full hover:bg-[var(--surface)] text-[var(--muted)]"
-            type="button"
-          >
-            {theme === 'light' ? '🌙' : '☀️'}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <PwaInstallButton />
+            <button
+              onClick={cycleTheme}
+              className="p-2 rounded-full hover:bg-[var(--surface)] text-[var(--muted)]"
+              type="button"
+            >
+              {theme === 'light' ? '🌙' : '☀️'}
+            </button>
+          </div>
         </header>
         <LoginPage onLoginSuccess={(profile) => setCurrentUserState(profile)} />
       </div>
@@ -157,7 +161,7 @@ function AppShell({
           <span className="grid size-7 place-items-center rounded-[var(--radius-sm)] bg-[var(--accent)] font-[var(--font-display)] text-sm font-bold text-[var(--accent-on)]">
             S
           </span>
-          <span className="font-semibold text-[var(--fg)]">一拍成课 SnapLesson</span>
+          <span className="font-semibold text-[var(--fg)]">一拍成课</span>
         </Link>
         <div className="ml-auto flex items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-1.5 text-xs text-[var(--muted)] border-r border-[var(--border-soft)] pr-3 sm:pr-4">
@@ -166,6 +170,7 @@ function AppShell({
               {currentUser.role === 'admin' ? '管理员' : '普通用户'}
             </span>
           </div>
+          <PwaInstallButton />
           <button
             onClick={onLogout}
             className="text-xs font-semibold text-[var(--muted)] hover:text-[var(--danger)] transition cursor-pointer"

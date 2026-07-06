@@ -16,9 +16,15 @@ const shouldRegisterServiceWorker =
   import.meta.env.PROD || window.location.hostname !== 'localhost'
 
 if ('serviceWorker' in navigator && shouldRegisterServiceWorker) {
-  window.addEventListener('load', () => {
+  const register = () => {
     navigator.serviceWorker.register('/sw.js').catch((err) => {
       console.warn('PWA ServiceWorker registration failed: ', err)
     })
-  })
+  }
+
+  if (document.readyState === 'complete') {
+    register()
+  } else {
+    window.addEventListener('load', register)
+  }
 }
