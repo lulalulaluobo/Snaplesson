@@ -70,6 +70,7 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const rafIdRef = useRef<number | null>(null)
+  const loopCueRef = useRef<Cue | null>(null)
 
   // 1. Fetch lesson information & subtitles
   useEffect(() => {
@@ -153,6 +154,13 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
       return
     }
 
+    // Sync loopCueRef when loopSentence is enabled
+    if (loopSentence && !loopCueRef.current && activeCueId) {
+      loopCueRef.current = cues.find(c => c.id === activeCueId) || null
+    } else if (!loopSentence) {
+      loopCueRef.current = null
+    }
+
     const checkTime = () => {
       const time = audio.currentTime
       setCurrentTime(time)
@@ -161,17 +169,17 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
       const active = cues.find(c => time >= c.start && time < c.end)
       if (active) {
         setActiveCueId(active.id)
-
-        // Loop checking with 30ms safety margin
-        if (loopSentence) {
-          const safetyMargin = 0.03
-          if (time >= active.end - safetyMargin) {
-            audio.currentTime = active.start
-            setCurrentTime(active.start)
-          }
-        }
       } else {
         setActiveCueId(null)
+      }
+
+      // Loop checking with 30ms safety margin using persistent loopCueRef
+      if (loopSentence && loopCueRef.current) {
+        const safetyMargin = 0.03
+        if (time >= loopCueRef.current.end - safetyMargin) {
+          audio.currentTime = loopCueRef.current.start
+          setCurrentTime(loopCueRef.current.start)
+        }
       }
 
       // Save progress periodically (throttled implicitly by window.localStorage write)
@@ -191,7 +199,7 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
         cancelAnimationFrame(rafIdRef.current)
       }
     }
-  }, [isPlaying, cues, loopSentence, lessonId])
+  }, [isPlaying, cues, loopSentence, activeCueId, lessonId])
 
   // Set initial seek position when audio elements are loaded
   const onAudioLoadedMetadata = () => {
@@ -227,11 +235,15 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
     if (!audio) return
     audio.currentTime = time
     setCurrentTime(time)
+    // Update or clear loop cue based on target time
+    const active = cues.find(c => time >= c.start && time < c.end)
+    loopCueRef.current = active || null
   }
 
   const handleSeekCue = (cue: Cue) => {
     const audio = audioRef.current
     if (!audio) return
+    loopCueRef.current = cue // Keep loop boundary in sync
     audio.currentTime = cue.start
     setCurrentTime(cue.start)
     setActiveCueId(cue.id)

@@ -118,14 +118,35 @@ export function VocabPage() {
       setPlayingSentenceId(null)
     })
 
-    const durationMs = Math.max(500, (end - start) * 1000 + 400) // add slight buffer for completeness
+    // Use high-precision timeupdate event to stop exactly at end - 30ms safety margin
+    audio.ontimeupdate = () => {
+      const safetyMargin = 0.03
+      if (audio.currentTime >= end - safetyMargin) {
+        audio.pause()
+        setPlayingSentenceId(null)
+        audio.ontimeupdate = null
+        if (timerRef.current) {
+          window.clearTimeout(timerRef.current)
+          timerRef.current = null
+        }
+      }
+    }
+
+    // Failsafe timer (long timeout) to prevent hanging if ontimeupdate doesn't fire
+    const durationMs = (end - start) * 1000 + 1000
     timerRef.current = window.setTimeout(() => {
       audio.pause()
       setPlayingSentenceId(null)
+      audio.ontimeupdate = null
     }, durationMs)
 
     audio.onended = () => {
       setPlayingSentenceId(null)
+      audio.ontimeupdate = null
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
     }
   }
 
