@@ -39,6 +39,9 @@ export function createDb(dbPath) {
       ocr_base_url TEXT,
       ocr_api_key TEXT,
       ocr_model TEXT,
+      llm_models_json TEXT DEFAULT '[]',
+      tts_models_json TEXT DEFAULT '[]',
+      ocr_models_json TEXT DEFAULT '[]',
       FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
     );
 
@@ -102,6 +105,26 @@ export function createDb(dbPath) {
     }
   } catch (err) {
     console.error("Failed to run database migration for lessons table:", err)
+  }
+
+  // Migration: Add models json columns to user_settings table if they do not exist
+  try {
+    const userSettingsTableInfo = db.prepare("PRAGMA table_info(user_settings)").all()
+    const columns = userSettingsTableInfo.map(column => column.name)
+    if (!columns.includes('llm_models_json')) {
+      db.exec("ALTER TABLE user_settings ADD COLUMN llm_models_json TEXT DEFAULT '[]'")
+      console.log("Database migration: Added 'llm_models_json' column to 'user_settings' table.")
+    }
+    if (!columns.includes('tts_models_json')) {
+      db.exec("ALTER TABLE user_settings ADD COLUMN tts_models_json TEXT DEFAULT '[]'")
+      console.log("Database migration: Added 'tts_models_json' column to 'user_settings' table.")
+    }
+    if (!columns.includes('ocr_models_json')) {
+      db.exec("ALTER TABLE user_settings ADD COLUMN ocr_models_json TEXT DEFAULT '[]'")
+      console.log("Database migration: Added 'ocr_models_json' column to 'user_settings' table.")
+    }
+  } catch (err) {
+    console.error("Failed to run database migration for user_settings table:", err)
   }
 
   // Pre-seed a preset course for custom lessons

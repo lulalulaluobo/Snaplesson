@@ -87,7 +87,7 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
     }
 
     try {
-      const { imageBase64 } = await parseJsonBody(req)
+      const { imageBase64, ocrPresetId } = await parseJsonBody(req)
       if (!imageBase64) {
         json(res, 400, { error: '未上传图片数据' })
         return true
@@ -95,10 +95,26 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
 
       const setting = getEffectiveUserSettings(db)
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '')
-      const ocrProvider = setting.ocr_provider || 'mimo'
-      const activeBaseUrl = setting.ocr_base_url || ''
-      const activeApiKey = setting.ocr_api_key || ''
-      const activeModel = setting.ocr_model || ''
+      
+      let ocrProvider = setting.ocr_provider || 'mimo'
+      let activeBaseUrl = setting.ocr_base_url || ''
+      let activeApiKey = setting.ocr_api_key || ''
+      let activeModel = setting.ocr_model || ''
+
+      if (ocrPresetId) {
+        try {
+          const presets = JSON.parse(setting.ocr_models_json || '[]')
+          const found = presets.find(p => p.id === String(ocrPresetId))
+          if (found) {
+            ocrProvider = found.provider || 'unisound'
+            activeBaseUrl = found.baseUrl || ''
+            activeApiKey = found.apiKey || ''
+            activeModel = found.model || ''
+          }
+        } catch (e) {
+          console.error('Failed to parse ocr_models_json or find preset:', e)
+        }
+      }
 
       let recognizedText = ''
 
@@ -136,6 +152,53 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
 
         const resData = await response.json()
         recognizedText = resData.content?.trim() || ''
+      } else if (ocrProvider === 'agnes') {
+        if (!activeApiKey) {
+          json(res, 400, { error: '管理员未配置 Agnes API Key' })
+          return true
+        }
+
+        let rawUrl = activeBaseUrl || 'https://apihub.agnes-ai.com/v1/chat/completions'
+        const base = rawUrl.trim().replace(/\/+$/, '')
+        const endpoint = base.includes('/chat/completions') ? base : `${base}/chat/completions`
+
+        const payload = {
+          model: activeModel || 'agnes-2.0-flash',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: '请仔细提取并识别这张图片中的所有英文文字。只输出识别出的英文文本，不要带有多余的解释、Markdown 代码块标记或翻译。'
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:image/png;base64,${cleanBase64}`
+                  }
+                }
+              ]
+            }
+          ]
+        }
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${activeApiKey}`
+          },
+          body: JSON.stringify(payload)
+        })
+
+        if (!response.ok) {
+          const errText = await response.text()
+          throw new Error(`Agnes OCR 识别失败: ${response.status} - ${errText}`)
+        }
+
+        const resData = await response.json()
+        recognizedText = resData.choices?.[0]?.message?.content?.trim() || ''
       } else if (ocrProvider === 'zhipu') {
         if (!activeApiKey) {
           json(res, 400, { error: '管理员未配置智谱 API Key' })
@@ -259,24 +322,74 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
     let lessonPersisted = false
 
     try {
-      const { title, text, level, ttsProvider, ttsVoice } = await parseJsonBody(req)
+      const { title, text, level, ttsPresetId, llmPresetId, ttsProvider, ttsVoice } = await parseJsonBody(req)
       if (!title || !title.trim() || !text || !text.trim()) {
         json(res, 400, { error: '标题与课文内容不能为空' })
         return true
       }
 
       const setting = getEffectiveUserSettings(db)
-      if (!setting || !setting.openai_api_key) {
+
+      // Resolve LLM model config
+      let llmBaseUrl = setting.openai_base_url || 'https://api.openai.com/v1'
+      let llmApiKey = setting.openai_api_key || ''
+      let llmModel = setting.openai_model || 'gpt-4o-mini'
+
+      if (llmPresetId) {
+        try {
+          const presets = JSON.parse(setting.llm_models_json || '[]')
+          const found = presets.find(p => p.id === String(llmPresetId))
+          if (found) {
+            llmBaseUrl = found.baseUrl || ''
+            llmApiKey = found.apiKey || ''
+            llmModel = found.model || ''
+          }
+        } catch (e) {
+          console.error('Failed to parse llm_models_json or find preset:', e)
+        }
+      }
+
+      if (!llmApiKey) {
         json(res, 400, { error: '管理员尚未配置 AI 大模型密钥，请联系管理员配置。' })
         return true
       }
 
-      // Override settings from request if present
-      if (ttsProvider) {
-        setting.tts_provider = ttsProvider
-      }
-      if (ttsVoice) {
-        setting.tts_voice = ttsVoice
+      // Resolve TTS config
+      let activeTtsProvider = setting.tts_provider || 'edge'
+      let activeTtsVoice = setting.tts_voice || 'en-US-EmmaNeural'
+      let activeTtsBaseUrl = setting.tts_base_url || ''
+      let activeTtsApiKey = setting.tts_api_key || ''
+      let activeTtsModel = setting.tts_model || ''
+
+      if (ttsPresetId) {
+        if (ttsPresetId === 'edge') {
+          activeTtsProvider = 'edge'
+          activeTtsVoice = ttsVoice || 'en-US-EmmaNeural'
+          activeTtsBaseUrl = ''
+          activeTtsApiKey = ''
+          activeTtsModel = ''
+        } else {
+          try {
+            const presets = JSON.parse(setting.tts_models_json || '[]')
+            const found = presets.find(p => p.id === String(ttsPresetId))
+            if (found) {
+              activeTtsProvider = found.provider || 'edge'
+              activeTtsVoice = ttsVoice || found.voice || 'en-US-EmmaNeural'
+              activeTtsBaseUrl = found.baseUrl || ''
+              activeTtsApiKey = found.apiKey || ''
+              activeTtsModel = found.model || ''
+            }
+          } catch (e) {
+            console.error('Failed to parse tts_models_json or find preset:', e)
+          }
+        }
+      } else {
+        if (ttsProvider) {
+          activeTtsProvider = ttsProvider
+        }
+        if (ttsVoice) {
+          activeTtsVoice = ttsVoice
+        }
       }
 
       // Generate a unique numeric ID for the lesson
@@ -303,15 +416,15 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
 待翻译英文文本：
 "${text.replace(/"/g, '\\"')}"`
 
-      const baseUrl = setting.openai_base_url.trim().replace(/\/+$/, '')
+      const baseUrl = llmBaseUrl.trim().replace(/\/+$/, '')
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${setting.openai_api_key}`
+          'Authorization': `Bearer ${llmApiKey}`
         },
         body: JSON.stringify({
-          model: setting.openai_model,
+          model: llmModel,
           messages: [
             { role: 'system', content: 'You are a strict JSON generator. Only return a raw JSON array.' },
             { role: 'user', content: prompt }
@@ -352,7 +465,12 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
         let attempts = 3
         while (attempts > 0) {
           try {
-            audioBuffer = await synthesizeText(eng, setting.tts_voice, setting)
+            audioBuffer = await synthesizeText(eng, activeTtsVoice, {
+              tts_provider: activeTtsProvider,
+              tts_base_url: activeTtsBaseUrl,
+              tts_api_key: activeTtsApiKey,
+              tts_model: activeTtsModel
+            })
             if (audioBuffer && audioBuffer.length > 0) {
               break // Success!
             }
@@ -396,7 +514,12 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
           let attempts = 3
           while (attempts > 0) {
             try {
-              audioBuffer = await synthesizeText(eng, setting.tts_voice, setting)
+              audioBuffer = await synthesizeText(eng, activeTtsVoice, {
+                tts_provider: activeTtsProvider,
+                tts_base_url: activeTtsBaseUrl,
+                tts_api_key: activeTtsApiKey,
+                tts_model: activeTtsModel
+              })
               if (audioBuffer && audioBuffer.length > 0) {
                 await writeFile(filePath, audioBuffer)
                 break

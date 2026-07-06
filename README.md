@@ -41,13 +41,13 @@ npm run dev
 
 ## ⚙️ AI 服务配置
 
-所有 API Key 均通过 Web 管理后台配置，安全存储在本地数据库，**不需要**配置 `.env` 文件。
+所有 API Key 均通过 Web 管理后台配置，安全存储在本地数据库，**不需要**配置 `.env` 文件。管理员支持配置多组接口作为快捷预设，普通用户可在创建课时时自由选择调用的预设通道。
 
-| 功能 | 支持的服务 |
+| 功能 | 支持的服务 / 提供商 |
 |------|-----------|
-| 文本处理/翻译 | OpenAI / 兼容 API（如 Claude、Gemini 等） |
-| 语音合成 (TTS) | Edge TTS（免费）、云知声、小米 MIMO |
-| OCR 识别 | 云知声 OCR |
+| 文本处理/翻译 | OpenAI / 兼容 API (支持多组预设列表) |
+| 语音合成 (TTS) | Edge TTS（系统免费默认）、云知声 Maas、小米 MIMO |
+| OCR 识别 | 云知声 Maas、小米 MIMO（支持 glm-5v-turbo）、智谱清言 GLM、Agnes AI (agnes-2.0-flash) |
 
 ## 📁 项目结构
 

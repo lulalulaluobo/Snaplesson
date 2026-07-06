@@ -1,5 +1,21 @@
 // settings 域路由：全局 AI 设置（仅 admin 角色可读写，普通用户由后端自动共享）。
 
+function maskModelsJson(modelsJson) {
+  try {
+    const parsed = JSON.parse(modelsJson || '[]')
+    if (!Array.isArray(parsed)) return '[]'
+    return JSON.stringify(parsed.map(profile => {
+      if (!profile || typeof profile !== 'object') return null
+      return {
+        ...profile,
+        apiKey: profile.apiKey ? '******' : ''
+      }
+    }).filter(Boolean))
+  } catch {
+    return '[]'
+  }
+}
+
 export function getEffectiveUserSettings(db) {
   // Find the first admin user
   const adminRow = db.prepare("SELECT username FROM users WHERE role = 'admin' LIMIT 1").get()
@@ -23,7 +39,10 @@ export function getEffectiveUserSettings(db) {
     ocr_provider: 'unisound',
     ocr_base_url: 'https://maas-api.unisound.com/v1',
     ocr_api_key: '',
-    ocr_model: 'u1-ocr'
+    ocr_model: 'u1-ocr',
+    llm_models_json: '[]',
+    tts_models_json: '[]',
+    ocr_models_json: '[]'
   }
 
   if (!setting) {
@@ -41,7 +60,6 @@ export async function handleSettingsRoutes(req, res, url, ctx) {
 
   const { db, getAuthenticatedUser, parseJsonBody, json } = ctx
 
-  // Handle public route first (for any authenticated user)
   if (url.pathname === '/api/settings/public' && req.method === 'GET') {
     const user = await getAuthenticatedUser(req, db)
     if (!user) {
@@ -53,7 +71,10 @@ export async function handleSettingsRoutes(req, res, url, ctx) {
       json(res, 200, {
         tts_provider: setting.tts_provider || 'edge',
         ocr_provider: setting.ocr_provider || 'unisound',
-        openai_model: setting.openai_model || 'gpt-4o-mini'
+        openai_model: setting.openai_model || 'gpt-4o-mini',
+        llm_models_json: maskModelsJson(setting.llm_models_json),
+        tts_models_json: maskModelsJson(setting.tts_models_json),
+        ocr_models_json: maskModelsJson(setting.ocr_models_json)
       })
     } catch (err) {
       json(res, 500, { error: '获取公共配置失败' })
@@ -99,6 +120,9 @@ export async function handleSettingsRoutes(req, res, url, ctx) {
         ocr_model: setting.ocr_model || '',
         hasOcrApiKey: !!setting.ocr_api_key,
         ocrApiKeyLast4: setting.ocr_api_key ? setting.ocr_api_key.slice(-4) : '',
+        llm_models_json: maskModelsJson(setting.llm_models_json),
+        tts_models_json: maskModelsJson(setting.tts_models_json),
+        ocr_models_json: maskModelsJson(setting.ocr_models_json)
       })
     } catch (err) {
       console.error(err)
@@ -126,6 +150,16 @@ export async function handleSettingsRoutes(req, res, url, ctx) {
         openai_api_key = ''
       } else if (payload.openai_api_key && payload.openai_api_key !== '******') {
         openai_api_key = payload.openai_api_key
+      } else if (payload.openai_api_key === '******') {
+        try {
+          const presets = JSON.parse(existing.llm_models_json || '[]')
+          const matched = presets.find(p => p.baseUrl === openai_base_url && p.model === openai_model)
+          if (matched && matched.apiKey && matched.apiKey !== '******') {
+            openai_api_key = matched.apiKey
+          }
+        } catch (e) {
+          console.error('Failed to resolve active LLM API key from presets:', e)
+        }
       }
 
       const tts_provider = payload.tts_provider !== undefined ? payload.tts_provider : existing.tts_provider
@@ -138,6 +172,16 @@ export async function handleSettingsRoutes(req, res, url, ctx) {
         tts_api_key = ''
       } else if (payload.tts_api_key && payload.tts_api_key !== '******') {
         tts_api_key = payload.tts_api_key
+      } else if (payload.tts_api_key === '******') {
+        try {
+          const presets = JSON.parse(existing.tts_models_json || '[]')
+          const matched = presets.find(p => p.provider === tts_provider && p.baseUrl === tts_base_url && p.model === tts_model)
+          if (matched && matched.apiKey && matched.apiKey !== '******') {
+            tts_api_key = matched.apiKey
+          }
+        } catch (e) {
+          console.error('Failed to resolve active TTS API key from presets:', e)
+        }
       }
 
       const ocr_provider = payload.ocr_provider !== undefined ? payload.ocr_provider : existing.ocr_provider
@@ -149,18 +193,135 @@ export async function handleSettingsRoutes(req, res, url, ctx) {
         ocr_api_key = ''
       } else if (payload.ocr_api_key && payload.ocr_api_key !== '******') {
         ocr_api_key = payload.ocr_api_key
+      } else if (payload.ocr_api_key === '******') {
+        try {
+          const presets = JSON.parse(existing.ocr_models_json || '[]')
+          const matched = presets.find(p => p.provider === ocr_provider && p.baseUrl === ocr_base_url && p.model === ocr_model)
+          if (matched && matched.apiKey && matched.apiKey !== '******') {
+            ocr_api_key = matched.apiKey
+          }
+        } catch (e) {
+          console.error('Failed to resolve active OCR API key from presets:', e)
+        }
+      }
+
+      const llmModelsJson = payload.llm_models_json !== undefined ? payload.llm_models_json : null
+      let updatedLlmModels = existing.llm_models_json || '[]'
+      if (llmModelsJson !== null) {
+        try {
+          const parsed = JSON.parse(llmModelsJson)
+          if (Array.isArray(parsed)) {
+            const resolved = parsed.map(p => {
+              if (p && typeof p === 'object') {
+                let pKey = p.apiKey
+                if (pKey === '******') {
+                  try {
+                    const oldList = JSON.parse(existing.llm_models_json || '[]')
+                    const found = oldList.find(x => x.id === p.id)
+                    if (found) pKey = found.apiKey
+                  } catch {}
+                  if (pKey === '******' || !pKey) pKey = openai_api_key
+                }
+                return {
+                  id: p.id || String(Date.now() + Math.random()),
+                  name: p.name || 'Unnamed',
+                  baseUrl: p.baseUrl || '',
+                  apiKey: pKey || '',
+                  model: p.model || ''
+                }
+              }
+              return null
+            }).filter(Boolean)
+            updatedLlmModels = JSON.stringify(resolved)
+          }
+        } catch (e) {
+          console.error('Failed to parse llm_models_json:', e)
+        }
+      }
+
+      const ttsModelsJson = payload.tts_models_json !== undefined ? payload.tts_models_json : null
+      let updatedTtsModels = existing.tts_models_json || '[]'
+      if (ttsModelsJson !== null) {
+        try {
+          const parsed = JSON.parse(ttsModelsJson)
+          if (Array.isArray(parsed)) {
+            const resolved = parsed.map(p => {
+              if (p && typeof p === 'object') {
+                let pKey = p.apiKey
+                if (pKey === '******') {
+                  try {
+                    const oldList = JSON.parse(existing.tts_models_json || '[]')
+                    const found = oldList.find(x => x.id === p.id)
+                    if (found) pKey = found.apiKey
+                  } catch {}
+                  if (pKey === '******' || !pKey) pKey = tts_api_key
+                }
+                return {
+                  id: p.id || String(Date.now() + Math.random()),
+                  name: p.name || 'Unnamed',
+                  provider: p.provider || 'edge',
+                  baseUrl: p.baseUrl || '',
+                  apiKey: pKey || '',
+                  model: p.model || '',
+                  voice: p.voice || ''
+                }
+              }
+              return null
+            }).filter(Boolean)
+            updatedTtsModels = JSON.stringify(resolved)
+          }
+        } catch (e) {
+          console.error('Failed to parse tts_models_json:', e)
+        }
+      }
+
+      const ocrModelsJson = payload.ocr_models_json !== undefined ? payload.ocr_models_json : null
+      let updatedOcrModels = existing.ocr_models_json || '[]'
+      if (ocrModelsJson !== null) {
+        try {
+          const parsed = JSON.parse(ocrModelsJson)
+          if (Array.isArray(parsed)) {
+            const resolved = parsed.map(p => {
+              if (p && typeof p === 'object') {
+                let pKey = p.apiKey
+                if (pKey === '******') {
+                  try {
+                    const oldList = JSON.parse(existing.ocr_models_json || '[]')
+                    const found = oldList.find(x => x.id === p.id)
+                    if (found) pKey = found.apiKey
+                  } catch {}
+                  if (pKey === '******' || !pKey) pKey = ocr_api_key
+                }
+                return {
+                  id: p.id || String(Date.now() + Math.random()),
+                  name: p.name || 'Unnamed',
+                  provider: p.provider || 'unisound',
+                  baseUrl: p.baseUrl || '',
+                  apiKey: pKey || '',
+                  model: p.model || ''
+                }
+              }
+              return null
+            }).filter(Boolean)
+            updatedOcrModels = JSON.stringify(resolved)
+          }
+        } catch (e) {
+          console.error('Failed to parse ocr_models_json:', e)
+        }
       }
 
       db.prepare(`
         UPDATE user_settings
         SET openai_base_url = ?, openai_model = ?, openai_api_key = ?,
             tts_provider = ?, tts_voice = ?, tts_base_url = ?, tts_model = ?, tts_api_key = ?,
-            ocr_provider = ?, ocr_base_url = ?, ocr_model = ?, ocr_api_key = ?
+            ocr_provider = ?, ocr_base_url = ?, ocr_model = ?, ocr_api_key = ?,
+            llm_models_json = ?, tts_models_json = ?, ocr_models_json = ?
         WHERE username = ?
       `).run(
         openai_base_url, openai_model, openai_api_key,
         tts_provider, tts_voice, tts_base_url, tts_model, tts_api_key,
         ocr_provider, ocr_base_url, ocr_model, ocr_api_key,
+        updatedLlmModels, updatedTtsModels, updatedOcrModels,
         user.username
       )
 

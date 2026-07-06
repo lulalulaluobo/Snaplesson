@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { UnifiedSettingsCard, type ApiProfile } from '../components/UnifiedSettingsCard'
 
 const EDGE_VOICES = [
   { value: 'en-US-EmmaNeural', label: 'Emma (美音女声 - 推荐)' },
@@ -32,12 +33,14 @@ export function SettingsPage() {
   const [openaiApiKey, setOpenaiApiKey] = useState('')
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState('')
   const [openaiModel, setOpenaiModel] = useState('')
+  const [llmModels, setLlmModels] = useState<ApiProfile[]>([])
 
   // OCR settings
   const [ocrProvider, setOcrProvider] = useState('unisound')
   const [ocrApiKey, setOcrApiKey] = useState('')
   const [ocrBaseUrl, setOcrBaseUrl] = useState('')
   const [ocrModel, setOcrModel] = useState('')
+  const [ocrModels, setOcrModels] = useState<ApiProfile[]>([])
 
   // TTS settings
   const [ttsProvider, setTtsProvider] = useState('edge')
@@ -45,6 +48,7 @@ export function SettingsPage() {
   const [ttsBaseUrl, setTtsBaseUrl] = useState('')
   const [ttsModel, setTtsModel] = useState('')
   const [ttsVoice, setTtsVoice] = useState('en-US-EmmaNeural')
+  const [ttsModels, setTtsModels] = useState<ApiProfile[]>([])
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -64,6 +68,10 @@ export function SettingsPage() {
   const [origHasOcrKey, setOrigHasOcrKey] = useState(false)
   const [origHasTtsKey, setOrigHasTtsKey] = useState(false)
 
+  const [llmApiKeyLast4, setLlmApiKeyLast4] = useState('')
+  const [ttsApiKeyLast4, setTtsApiKeyLast4] = useState('')
+  const [ocrApiKeyLast4, setOcrApiKeyLast4] = useState('')
+
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -77,6 +85,7 @@ export function SettingsPage() {
           setOpenaiModel(data.openai_model || 'gpt-4o-mini')
           setOrigHasLlmKey(data.hasApiKey)
           setOpenaiApiKey(data.hasApiKey ? '******' : '')
+          setLlmApiKeyLast4(data.apiKeyLast4 || '')
 
           // OCR
           setOcrProvider(data.ocr_provider || 'unisound')
@@ -84,6 +93,7 @@ export function SettingsPage() {
           setOcrModel(data.ocr_model || 'u1-ocr')
           setOrigHasOcrKey(data.hasOcrApiKey)
           setOcrApiKey(data.hasOcrApiKey ? '******' : '')
+          setOcrApiKeyLast4(data.ocrApiKeyLast4 || '')
 
           // TTS
           setTtsProvider(data.tts_provider || 'edge')
@@ -92,6 +102,12 @@ export function SettingsPage() {
           setTtsVoice(data.tts_voice || 'en-US-EmmaNeural')
           setOrigHasTtsKey(data.hasTtsApiKey)
           setTtsApiKey(data.hasTtsApiKey ? '******' : '')
+          setTtsApiKeyLast4(data.ttsApiKeyLast4 || '')
+
+          // Presets lists
+          try { setLlmModels(JSON.parse(data.llm_models_json || '[]')) } catch {}
+          try { setTtsModels(JSON.parse(data.tts_models_json || '[]')) } catch {}
+          try { setOcrModels(JSON.parse(data.ocr_models_json || '[]')) } catch {}
         }
       } catch (e) {
         console.error('Failed to load settings:', e)
@@ -103,42 +119,54 @@ export function SettingsPage() {
     fetchSettings()
   }, [])
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setPwError(null)
-    setPwSuccess(null)
-    if (!pwOld || !pwNew || !pwConfirm) {
-      setPwError('请填写所有密码字段')
-      return
-    }
-    if (pwNew !== pwConfirm) {
-      setPwError('新密码与确认密码不一致')
-      return
-    }
-    if (pwNew.length < 4) {
-      setPwError('新密码长度至少 4 位')
-      return
-    }
-    setPwSaving(true)
+  const autoSavePresets = async (type: 'llm' | 'tts' | 'ocr', updatedProfiles: ApiProfile[]) => {
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const payloadKey = type === 'llm' ? 'llm_models_json'
+                       : type === 'tts' ? 'tts_models_json'
+                       : 'ocr_models_json';
+      await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPassword: pwOld, newPassword: pwNew }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setPwSuccess('密码修改成功！')
-        setPwOld('')
-        setPwNew('')
-        setPwConfirm('')
-      } else {
-        setPwError(data.error || '修改失败，请重试')
-      }
-    } catch {
-      setPwError('网络错误，请稍后重试')
-    } finally {
-      setPwSaving(false)
+        body: JSON.stringify({
+          [payloadKey]: JSON.stringify(updatedProfiles)
+        })
+      });
+    } catch (e) {
+      console.error(`Auto save presets failed for ${type}:`, e);
+    }
+  }
+
+  const handleOcrProviderChange = (p: string) => {
+    setOcrProvider(p)
+    if (p === 'mimo') {
+      setOcrBaseUrl('https://api.xiaomimimo.com')
+      setOcrModel('mimo-v2.5')
+    } else if (p === 'zhipu') {
+      setOcrBaseUrl('https://open.bigmodel.cn/api/paas/v4')
+      setOcrModel('glm-5v-turbo')
+    } else if (p === 'unisound') {
+      setOcrBaseUrl('https://maas-api.unisound.com/v1')
+      setOcrModel('u1-ocr')
+    } else if (p === 'agnes') {
+      setOcrBaseUrl('https://apihub.agnes-ai.com/v1/chat/completions')
+      setOcrModel('agnes-2.0-flash')
+    }
+  }
+
+  const handleTtsProviderChange = (p: string) => {
+    setTtsProvider(p)
+    if (p === 'edge') {
+      setTtsBaseUrl('')
+      setTtsModel('')
+      setTtsVoice('en-US-EmmaNeural')
+    } else if (p === 'mimo') {
+      setTtsBaseUrl('https://api.xiaomimimo.com')
+      setTtsModel('mimo-v2.5-tts')
+      setTtsVoice('冰糖')
+    } else if (p === 'unisound') {
+      setTtsBaseUrl('https://maas-api.unisound.com/v1')
+      setTtsModel('u2-tts')
+      setTtsVoice('cn_female_shasha')
     }
   }
 
@@ -189,9 +217,35 @@ export function SettingsPage() {
       if (res.ok) {
         setSuccess('AI 接口配置保存成功！')
         // Refresh local flags
-        if (finalLlmKey !== '******' && finalLlmKey !== '__CLEAR__') setOrigHasLlmKey(!!finalLlmKey)
-        if (finalOcrKey !== '******' && finalOcrKey !== '__CLEAR__') setOrigHasOcrKey(!!finalOcrKey)
-        if (finalTtsKey !== '******' && finalTtsKey !== '__CLEAR__') setOrigHasTtsKey(!!finalTtsKey)
+        if (finalLlmKey !== '******' && finalLlmKey !== '__CLEAR__') {
+          setOrigHasLlmKey(!!finalLlmKey)
+          setLlmApiKeyLast4(finalLlmKey.slice(-4))
+          setOpenaiApiKey('******')
+        } else if (finalLlmKey === '__CLEAR__') {
+          setOrigHasLlmKey(false)
+          setLlmApiKeyLast4('')
+          setOpenaiApiKey('')
+        }
+
+        if (finalOcrKey !== '******' && finalOcrKey !== '__CLEAR__') {
+          setOrigHasOcrKey(!!finalOcrKey)
+          setOcrApiKeyLast4(finalOcrKey.slice(-4))
+          setOcrApiKey('******')
+        } else if (finalOcrKey === '__CLEAR__') {
+          setOrigHasOcrKey(false)
+          setOcrApiKeyLast4('')
+          setOcrApiKey('')
+        }
+
+        if (finalTtsKey !== '******' && finalTtsKey !== '__CLEAR__') {
+          setOrigHasTtsKey(!!finalTtsKey)
+          setTtsApiKeyLast4(finalTtsKey.slice(-4))
+          setTtsApiKey('******')
+        } else if (finalTtsKey === '__CLEAR__') {
+          setOrigHasTtsKey(false)
+          setTtsApiKeyLast4('')
+          setTtsApiKey('')
+        }
       } else {
         const data = await res.json()
         setError(data.error || '保存配置失败')
@@ -207,6 +261,45 @@ export function SettingsPage() {
     if (ttsProvider === 'unisound') return UNISOUND_VOICES
     if (ttsProvider === 'mimo') return MIMO_VOICES
     return EDGE_VOICES
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPwError(null)
+    setPwSuccess(null)
+    if (!pwOld || !pwNew || !pwConfirm) {
+      setPwError('请填写所有密码字段')
+      return
+    }
+    if (pwNew !== pwConfirm) {
+      setPwError('新密码与确认密码不一致')
+      return
+    }
+    if (pwNew.length < 4) {
+      setPwError('新密码长度至少 4 位')
+      return
+    }
+    setPwSaving(true)
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: pwOld, newPassword: pwNew }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setPwSuccess('密码修改成功！')
+        setPwOld('')
+        setPwNew('')
+        setPwConfirm('')
+      } else {
+        setPwError(data.error || '修改失败，请重试')
+      }
+    } catch {
+      setPwError('网络错误，请稍后重试')
+    } finally {
+      setPwSaving(false)
+    }
   }
 
   if (loading) {
@@ -226,233 +319,117 @@ export function SettingsPage() {
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* LLM Section */}
-        <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] space-y-4">
-          <h2 className="font-bold text-base text-[var(--accent)] border-b border-[var(--border-soft)] pb-2">
-            1. 大语言模型配置 (课文断句与双语翻译)
-          </h2>
+        {/* Card 1: LLM */}
+        <UnifiedSettingsCard
+          title="1. 大语言模型配置 (课文断句与双语翻译)"
+          description="配置 OpenAI 兼容接口，用于课文句子的段落拆分与双语翻译功能。"
+          profiles={llmModels}
+          setProfiles={setLlmModels}
+          baseUrl={openaiBaseUrl}
+          setBaseUrl={setOpenaiBaseUrl}
+          apiKey={openaiApiKey}
+          setApiKey={setOpenaiApiKey}
+          model={openaiModel}
+          setModel={setOpenaiModel}
+          hasApiKey={origHasLlmKey}
+          setHasApiKey={setOrigHasLlmKey}
+          apiKeyLast4={llmApiKeyLast4}
+          setApiKeyLast4={setLlmApiKeyLast4}
+          onClearApiKey={() => {
+            setOpenaiApiKey('__CLEAR__')
+            setOrigHasLlmKey(false)
+          }}
+          saving={saving}
+          showApiFields={true}
+          onProfilesChange={(newProfiles) => autoSavePresets('llm', newProfiles)}
+        />
 
-          <div className="grid gap-3">
+        {/* Card 2: OCR */}
+        <UnifiedSettingsCard
+          title="2. OCR 文字识别配置 (拍照课件识别)"
+          description="配置在新建课程时通过上传/拍摄图片生成课时的多模态文字提取服务。"
+          profiles={ocrModels}
+          setProfiles={setOcrModels}
+          baseUrl={ocrBaseUrl}
+          setBaseUrl={setOcrBaseUrl}
+          apiKey={ocrApiKey}
+          setApiKey={setOcrApiKey}
+          model={ocrModel}
+          setModel={setOcrModel}
+          hasApiKey={origHasOcrKey}
+          setHasApiKey={setOrigHasOcrKey}
+          apiKeyLast4={ocrApiKeyLast4}
+          setApiKeyLast4={setOcrApiKeyLast4}
+          onClearApiKey={() => {
+            setOcrApiKey('__CLEAR__')
+            setOrigHasOcrKey(false)
+          }}
+          saving={saving}
+          provider={ocrProvider}
+          setProvider={handleOcrProviderChange}
+          providerLabel="OCR 识别服务商 (OCR Provider)"
+          providerOptions={[
+            { value: 'unisound', label: '云知声 Maas (专用 OCR 接口 - 默认)' },
+            { value: 'mimo', label: '小米 MIMO (支持 glm-5v-turbo)' },
+            { value: 'zhipu', label: '智谱清言 GLM (多模态识图)' },
+            { value: 'agnes', label: 'Agnes AI (agnes-2.0-flash)' }
+          ]}
+          showApiFields={true}
+          onProfilesChange={(newProfiles) => autoSavePresets('ocr', newProfiles)}
+        />
+
+        {/* Card 3: TTS */}
+        <UnifiedSettingsCard
+          title="3. TTS 语音合成发音人设置"
+          description="配置语音合成发音人（Edge 合成为内置免费通道，云知声/小米 MIMO 需自备 API Key）。"
+          profiles={ttsModels}
+          setProfiles={setTtsModels}
+          baseUrl={ttsBaseUrl}
+          setBaseUrl={setTtsBaseUrl}
+          apiKey={ttsApiKey}
+          setApiKey={setTtsApiKey}
+          model={ttsModel}
+          setModel={setTtsModel}
+          hasApiKey={origHasTtsKey}
+          setHasApiKey={setOrigHasTtsKey}
+          apiKeyLast4={ttsApiKeyLast4}
+          setApiKeyLast4={setTtsApiKeyLast4}
+          onClearApiKey={() => {
+            setTtsApiKey('__CLEAR__')
+            setOrigHasTtsKey(false)
+          }}
+          saving={saving}
+          provider={ttsProvider}
+          setProvider={handleTtsProviderChange}
+          providerLabel="TTS 合成服务商 (TTS Provider)"
+          providerOptions={[
+            { value: 'edge', label: '微软 Edge TTS (免费逆向 - 推荐)' },
+            { value: 'unisound', label: '云知声 Maas TTS (异步 API)' },
+            { value: 'mimo', label: '小米 MIMO TTS (音频返回 API)' }
+          ]}
+          showApiFields={ttsProvider !== 'edge'}
+          helperText="内置 Edge TTS 是完全免费服务，无需配置任何接口地址与密钥，直接选择下方音色即可使用。"
+          extraFieldsForProfile={{
+            voice: ttsVoice,
+            setVoice: setTtsVoice
+          }}
+          customFields={
             <div>
-              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                API Base URL (接口地址)
-              </label>
-              <input
-                type="text"
-                value={openaiBaseUrl}
-                onChange={(e) => setOpenaiBaseUrl(e.target.value)}
-                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-                placeholder="例如：https://api.openai.com/v1 或中转接口"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                API Key (密钥)
-              </label>
-              <input
-                type="password"
-                value={openaiApiKey}
-                onChange={(e) => setOpenaiApiKey(e.target.value)}
-                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-                placeholder="请输入 OpenAI 规范 API Key"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                Model Name (模型名称)
-              </label>
-              <input
-                type="text"
-                value={openaiModel}
-                onChange={(e) => setOpenaiModel(e.target.value)}
-                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-                placeholder="例如：gpt-4o-mini, deepseek-chat"
-                required
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* OCR Section */}
-        <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] space-y-4">
-          <h2 className="font-bold text-base text-[var(--accent)] border-b border-[var(--border-soft)] pb-2">
-            2. OCR 文字识别配置 (拍照课件识别)
-          </h2>
-
-          <div className="grid gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                OCR 识别服务商 (OCR Provider)
-              </label>
-              <select
-                value={ocrProvider}
-                onChange={(e) => {
-                  const p = e.target.value
-                  setOcrProvider(p)
-                  // Pre-fill defaults
-                  if (p === 'mimo') {
-                    setOcrBaseUrl('https://api.xiaomimimo.com')
-                    setOcrModel('mimo-v2.5')
-                  } else if (p === 'zhipu') {
-                    setOcrBaseUrl('https://open.bigmodel.cn/api/paas/v4')
-                    setOcrModel('glm-5v-turbo')
-                  } else if (p === 'unisound') {
-                    setOcrBaseUrl('https://maas-api.unisound.com/v1')
-                    setOcrModel('u1-ocr')
-                  }
-                }}
-                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
-              >
-                <option value="unisound">云知声 Maas (专用 OCR 接口 - 默认)</option>
-                <option value="mimo">小米 MIMO (支持 glm-5v-turbo)</option>
-                <option value="zhipu">智谱清言 GLM (多模态识图)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                OCR Base URL (接口地址)
-              </label>
-              <input
-                type="text"
-                value={ocrBaseUrl}
-                onChange={(e) => setOcrBaseUrl(e.target.value)}
-                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-                placeholder="接口端点"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                OCR API Key (密钥)
-              </label>
-              <input
-                type="password"
-                value={ocrApiKey}
-                onChange={(e) => setOcrApiKey(e.target.value)}
-                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-                placeholder="填写对应 OCR 平台的 API Key"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                OCR Model (所用模型名称)
-              </label>
-              <input
-                type="text"
-                value={ocrModel}
-                onChange={(e) => setOcrModel(e.target.value)}
-                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-                placeholder="模型或接口参数"
-                required
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* TTS Section */}
-        <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] space-y-4">
-          <h2 className="font-bold text-base text-[var(--accent)] border-b border-[var(--border-soft)] pb-2">
-            3. TTS 语音合成发音人设置
-          </h2>
-
-          <div className="grid gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                TTS 合成服务商 (TTS Provider)
-              </label>
-              <select
-                value={ttsProvider}
-                onChange={(e) => {
-                  const p = e.target.value
-                  setTtsProvider(p)
-                  // Pre-fill defaults and update default voice speaker
-                  if (p === 'edge') {
-                    setTtsBaseUrl('')
-                    setTtsModel('')
-                    setTtsVoice('en-US-EmmaNeural')
-                  } else if (p === 'mimo') {
-                    setTtsBaseUrl('https://api.xiaomimimo.com')
-                    setTtsModel('mimo-v2.5-tts')
-                    setTtsVoice('冰糖')
-                  } else if (p === 'unisound') {
-                    setTtsBaseUrl('https://maas-api.unisound.com/v1')
-                    setTtsModel('u2-tts')
-                    setTtsVoice('cn_female_shasha')
-                  }
-                }}
-                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
-              >
-                <option value="edge">微软 Edge TTS (免费逆向 - 推荐)</option>
-                <option value="unisound">云知声 Maas TTS (异步 API)</option>
-                <option value="mimo">小米 MIMO TTS (音频返回 API)</option>
-              </select>
-            </div>
-
-            {ttsProvider !== 'edge' && (
-              <>
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                    TTS Base URL (接口地址)
-                  </label>
-                  <input
-                    type="text"
-                    value={ttsBaseUrl}
-                    onChange={(e) => setTtsBaseUrl(e.target.value)}
-                    className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-                    placeholder="TTS 接口 API Base"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                    TTS API Key (密钥)
-                  </label>
-                  <input
-                    type="password"
-                    value={ttsApiKey}
-                    onChange={(e) => setTtsApiKey(e.target.value)}
-                    className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-                    placeholder="填写对应 TTS 平台的 API Key"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                    TTS Model (模型名称)
-                  </label>
-                  <input
-                    type="text"
-                    value={ttsModel}
-                    onChange={(e) => setTtsModel(e.target.value)}
-                    className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-                    placeholder="模型参数"
-                    required
-                  />
-                </div>
-              </>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                系统合成默认英文配音 (Voice Speaker)
-              </label>
+              <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">系统合成默认英文配音 (Voice Speaker)</label>
               <select
                 value={ttsVoice}
                 onChange={(e) => setTtsVoice(e.target.value)}
                 className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
+                disabled={saving}
               >
                 {getVoiceOptions().map(v => (
                   <option key={v.value} value={v.value}>{v.label}</option>
                 ))}
               </select>
             </div>
-          </div>
-        </div>
+          }
+          onProfilesChange={(newProfiles) => autoSavePresets('tts', newProfiles)}
+        />
 
         {/* Status notification */}
         {error && (

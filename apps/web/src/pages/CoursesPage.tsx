@@ -49,7 +49,27 @@ export function CoursesPage() {
     tts_provider: string
     ocr_provider: string
     openai_model: string
+    llm_models_json?: string
+    tts_models_json?: string
+    ocr_models_json?: string
   } | null>(null)
+
+  interface ApiProfile {
+    id: string
+    name: string
+    provider?: string
+    baseUrl: string
+    model: string
+    voice?: string
+  }
+
+  const [llmPresets, setLlmPresets] = useState<ApiProfile[]>([])
+  const [ocrPresets, setOcrPresets] = useState<ApiProfile[]>([])
+  const [ttsPresets, setTtsPresets] = useState<ApiProfile[]>([])
+
+  const [selectedLlmPresetId, setSelectedLlmPresetId] = useState<string>('')
+  const [selectedOcrPresetId, setSelectedOcrPresetId] = useState<string>('')
+  const [selectedTtsPresetId, setSelectedTtsPresetId] = useState<string>('edge')
 
   const [selectedTtsProvider, setSelectedTtsProvider] = useState('edge')
   const [selectedTtsVoice, setSelectedTtsVoice] = useState('en-US-EmmaNeural')
@@ -85,7 +105,30 @@ export function CoursesPage() {
       // Fetch public settings
       const settingsRes = await fetch('/api/settings/public')
       if (settingsRes.ok) {
-        setPublicSettings(await settingsRes.json())
+        const data = await settingsRes.json()
+        setPublicSettings(data)
+        
+        try {
+          const llmList = JSON.parse(data.llm_models_json || '[]')
+          setLlmPresets(llmList)
+          if (llmList.length > 0) {
+            setSelectedLlmPresetId(llmList[0].id)
+          }
+        } catch {}
+
+        try {
+          const ocrList = JSON.parse(data.ocr_models_json || '[]')
+          setOcrPresets(ocrList)
+          if (ocrList.length > 0) {
+            setSelectedOcrPresetId(ocrList[0].id)
+          }
+        } catch {}
+
+        try {
+          const ttsList = JSON.parse(data.tts_models_json || '[]')
+          setTtsPresets(ttsList)
+          setSelectedTtsPresetId('edge')
+        } catch {}
       }
     } catch (err) {
       console.error('Failed to fetch data:', err)
@@ -202,7 +245,7 @@ export function CoursesPage() {
       const res = await fetch('/api/custom-lessons/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64 })
+        body: JSON.stringify({ imageBase64, ocrPresetId: selectedOcrPresetId })
       })
 
       const data = await res.json()
@@ -241,7 +284,8 @@ export function CoursesPage() {
           title: newTitle.trim(),
           text: newText.trim(),
           level: newLevel,
-          ttsProvider: selectedTtsProvider,
+          ttsPresetId: selectedTtsPresetId,
+          llmPresetId: selectedLlmPresetId,
           ttsVoice: selectedTtsVoice
         })
       })
@@ -749,40 +793,97 @@ export function CoursesPage() {
                 </div>
               </div>
 
-              {/* TTS Configuration Options */}
+              {/* AI Service Configuration Panels */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)]">
+                {/* 1. OCR Provider */}
                 <div>
                   <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                    TTS 语音服务商 (TTS Service)
+                    OCR 识别通道
                   </label>
                   <select
-                    value={selectedTtsProvider}
+                    value={selectedOcrPresetId}
+                    onChange={(e) => setSelectedOcrPresetId(e.target.value)}
+                    className="mt-1.5 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
+                    disabled={createLoading || ocrLoading}
+                  >
+                    {ocrPresets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.name} ({preset.provider === 'unisound' ? '云知声' : preset.provider === 'mimo' ? '小米 MIMO' : preset.provider === 'zhipu' ? '智谱' : preset.provider === 'agnes' ? 'Agnes' : preset.provider})
+                      </option>
+                    ))}
+                    {ocrPresets.length === 0 && (
+                      <option value="">默认 OCR ({publicSettings?.ocr_provider === 'mimo' ? '小米 MIMO' : publicSettings?.ocr_provider === 'zhipu' ? '智谱' : '云知声 Maas'})</option>
+                    )}
+                  </select>
+                </div>
+
+                {/* 2. LLM Model */}
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
+                    AI 翻译模型
+                  </label>
+                  <select
+                    value={selectedLlmPresetId}
+                    onChange={(e) => setSelectedLlmPresetId(e.target.value)}
+                    className="mt-1.5 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
+                    disabled={createLoading}
+                  >
+                    {llmPresets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.name} ({preset.model})
+                      </option>
+                    ))}
+                    {llmPresets.length === 0 && (
+                      <option value="">默认大模型 ({publicSettings?.openai_model || 'gpt-4o-mini'})</option>
+                    )}
+                  </select>
+                </div>
+
+                {/* 3. TTS Provider */}
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
+                    TTS 语音服务商
+                  </label>
+                  <select
+                    value={selectedTtsPresetId}
                     onChange={(e) => {
-                      const p = e.target.value
-                      setSelectedTtsProvider(p)
-                      if (p === 'edge') {
+                      const id = e.target.value
+                      setSelectedTtsPresetId(id)
+                      
+                      if (id === 'edge') {
+                        setSelectedTtsProvider('edge')
                         setSelectedTtsVoice('en-US-EmmaNeural')
-                      } else if (p === 'unisound') {
-                        setSelectedTtsVoice('cn_female_shasha')
-                      } else if (p === 'mimo') {
-                        setSelectedTtsVoice('冰糖')
+                      } else {
+                        const found = ttsPresets.find(p => p.id === id)
+                        if (found) {
+                          const prov = found.provider || 'edge'
+                          setSelectedTtsProvider(prov)
+                          if (found.voice) {
+                            setSelectedTtsVoice(found.voice)
+                          } else if (prov === 'unisound') {
+                            setSelectedTtsVoice('cn_female_shasha')
+                          } else if (prov === 'mimo') {
+                            setSelectedTtsVoice('冰糖')
+                          }
+                        }
                       }
                     }}
                     className="mt-1.5 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
                     disabled={createLoading}
                   >
                     <option value="edge">微软 Edge TTS (系统默认)</option>
-                    {publicSettings?.tts_provider === 'unisound' && (
-                      <option value="unisound">云知声 Maas (管理员配置)</option>
-                    )}
-                    {publicSettings?.tts_provider === 'mimo' && (
-                      <option value="mimo">小米 MIMO (管理员配置)</option>
-                    )}
+                    {ttsPresets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.name} ({preset.provider === 'unisound' ? '云知声' : preset.provider === 'mimo' ? '小米 MIMO' : preset.provider})
+                      </option>
+                    ))}
                   </select>
                 </div>
+
+                {/* 4. TTS Voice */}
                 <div>
                   <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                    发音人/音色 (Voice Speaker)
+                    发音人/音色
                   </label>
                   <select
                     value={selectedTtsVoice}
@@ -819,15 +920,6 @@ export function CoursesPage() {
                       </>
                     )}
                   </select>
-                </div>
-                {/* Information hint block */}
-                <div className="sm:col-span-2 text-[10px] text-[var(--muted)] flex flex-wrap gap-x-4 gap-y-1">
-                  <span>AI 大模型: <b className="text-[var(--fg)]">{publicSettings?.openai_model || 'gpt-4o-mini'}</b></span>
-                  <span>OCR 识别: <b className="text-[var(--fg)]">{
-                    publicSettings?.ocr_provider === 'mimo' ? '小米 MIMO' :
-                    publicSettings?.ocr_provider === 'zhipu' ? '智谱清言' :
-                    '云知声 Maas'
-                  }</b></span>
                 </div>
               </div>
 
