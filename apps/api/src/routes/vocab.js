@@ -81,6 +81,14 @@ export async function handleVocabRoutes(req, res, url, ctx) {
   const pathname = url.pathname
   const { db, dictDb, getAuthenticatedUser, parseJsonBody, json } = ctx
 
+  if (
+    pathname !== '/api/dict/lookup' &&
+    !pathname.startsWith('/api/user/vocab') &&
+    !pathname.startsWith('/api/user/reviews')
+  ) {
+    return false
+  }
+
   // 1. GET /api/dict/lookup?word=:word
   if (pathname === '/api/dict/lookup' && method === 'GET') {
     const wordParam = url.searchParams.get('word')
