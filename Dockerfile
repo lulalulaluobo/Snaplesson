@@ -19,6 +19,7 @@ RUN npm run build
 
 # Stage 2: Production runtime image
 FROM node:22-alpine AS runner
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4180
