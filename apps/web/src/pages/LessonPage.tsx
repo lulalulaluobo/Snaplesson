@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { formatTime, lessonLevelBadge } from '@/lib/courseUtils'
+import { CourseSidebar, type CourseLesson } from '@/components/CourseSidebar'
 
 interface Cue {
   id: string
@@ -54,6 +55,38 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
   const [subtitleMode, setSubtitleMode] = useState<'bilingual' | 'en' | 'zh' | 'off'>('bilingual')
   const [loopSentence, setLoopSentence] = useState(false)
   const [activeCueId, setActiveCueId] = useState<string | null>(null)
+
+  const [lessons, setLessons] = useState<CourseLesson[]>([])
+  const [isNavOpen, setIsNavOpen] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('sidebar_width')
+    return saved ? parseInt(saved, 10) : 300
+  })
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth > 820)
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth > 820)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Fetch all lessons catalog on mount
+  useEffect(() => {
+    const fetchLessons = async () => {
+      try {
+        const res = await fetch('/api/courses')
+        if (res.ok) {
+          const data = await res.json()
+          setLessons(data.lessons || [])
+        }
+      } catch (e) {
+        console.error('Failed to fetch lessons:', e)
+      }
+    }
+    fetchLessons()
+  }, [])
 
   // Dictionary modal states
   const [selectedWord, setSelectedWord] = useState<string | null>(null)
@@ -400,14 +433,24 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
   const isSentenceSaved = (text: string) => savedReviews.some(r => r.text === text)
 
   return (
-    <div className="flex flex-col min-h-dvh bg-[var(--bg)] text-[var(--fg)] pb-[calc(var(--player-h)+30px)]">
+    <div className={cn("app lesson-app", isNavOpen && "nav-open")} id="app">
       {/* Top sticky header */}
-      <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-[var(--border-soft)] bg-[color-mix(in_srgb,var(--bg)_85%,transparent)] px-4 backdrop-blur-md">
+      <header className="topbar">
+        <button
+          className="menu-toggle animate-none"
+          type="button"
+          aria-label="课程列表"
+          onClick={() => setIsNavOpen(!isNavOpen)}
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="M2 4.5h14M2 9h14M2 13.5h14" />
+          </svg>
+        </button>
         <Link
           to="/courses"
           className="flex items-center gap-1.5 text-xs font-bold text-[var(--muted)] hover:text-[var(--fg)] transition cursor-pointer"
         >
-          &larr; 返回列表
+          &larr; <span className="max-sm:hidden">返回列表</span>
         </Link>
         <h2 className="text-sm font-semibold truncate max-w-[40%]">{lesson.title}</h2>
         <div className="flex items-center gap-2">
@@ -432,70 +475,86 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
         </div>
       </header>
 
-      {/* Main card subtitles stream */}
-      <div className="flex-1 max-w-2xl mx-auto w-full px-4 py-6 space-y-4">
-        {cues.map((cue) => {
-          const isActive = activeCueId === cue.id
-          const isSavedSent = isSentenceSaved(cue.english)
+      <div className="body-grid" style={isDesktop ? { gridTemplateColumns: `${sidebarWidth}px 1fr` } : undefined}>
+        <div className="scrim" onClick={() => setIsNavOpen(false)} />
+        <CourseSidebar
+          lessons={lessons}
+          activeLesson={lesson}
+          activeProgress={Math.floor((currentTime / (duration || 1)) * 100)}
+          onSelectLesson={() => setIsNavOpen(false)}
+          sidebarWidth={sidebarWidth}
+          setSidebarWidth={setSidebarWidth}
+        />
 
-          return (
-            <div
-              id={`cue-${cue.id}`}
-              key={cue.id}
-              onClick={() => handleSeekCue(cue)}
-              className={cn(
-                "p-4 rounded-[var(--radius-lg)] border transition duration-200 cursor-pointer shadow-sm relative",
-                isActive
-                  ? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface-warm))] ring-2 ring-[color-mix(in_srgb,var(--accent)_15%,transparent)]"
-                  : "border-[var(--border-soft)] bg-[var(--surface-warm)] hover:border-[var(--border)]"
-              )}
-            >
-              {/* Timing code (hidden or small top right) */}
-              <div className="absolute top-2 right-2 text-[10px] text-[var(--meta)] font-[var(--font-mono)]">
-                {formatTime(cue.start)}
-              </div>
+        {/* Main card subtitles stream */}
+        <main className="main">
+          <div className="subs-scroll" id="subsScroll">
+            <div className="subs space-y-4 py-6">
+              {cues.map((cue) => {
+                const isActive = activeCueId === cue.id
+                const isSavedSent = isSentenceSaved(cue.english)
 
-              {/* Subtitle bilingual content */}
-              <div className="space-y-2 pr-12">
-                {/* English text (word clickable) */}
-                {subtitleMode !== 'zh' && subtitleMode !== 'off' && (
-                  <p className={cn(
-                    "text-lg leading-relaxed tracking-wide font-[var(--font-display)] transition duration-200",
-                    isActive ? "text-[var(--accent)] font-bold" : "text-[var(--fg)] font-semibold"
-                  )}>
-                    {renderSentenceWords(cue.english)}
-                  </p>
-                )}
-                {/* Chinese text */}
-                {subtitleMode !== 'en' && subtitleMode !== 'off' && (
-                  <p className="text-sm text-[var(--muted)] leading-relaxed">
-                    {cue.chinese}
-                  </p>
-                )}
-              </div>
+                return (
+                  <div
+                    id={`cue-${cue.id}`}
+                    key={cue.id}
+                    onClick={() => handleSeekCue(cue)}
+                    className={cn(
+                      "p-4 rounded-[var(--radius-lg)] border transition duration-200 cursor-pointer shadow-sm relative",
+                      isActive
+                        ? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface-warm))] ring-2 ring-[color-mix(in_srgb,var(--accent)_15%,transparent)]"
+                        : "border-[var(--border-soft)] bg-[var(--surface-warm)] hover:border-[var(--border)]"
+                    )}
+                  >
+                    {/* Timing code (hidden or small top right) */}
+                    <div className="absolute top-2 right-2 text-[10px] text-[var(--meta)] font-[var(--font-mono)]">
+                      {formatTime(cue.start)}
+                    </div>
 
-              {/* Action buttons (bookmark) */}
-              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--border-soft)_50%,transparent)] pt-3">
-                {/* Bookmark Sentence button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleBookmarkSentence(cue, isSavedSent)
-                  }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-[var(--radius-pill)] text-xs font-bold border transition cursor-pointer flex items-center gap-1 shadow-sm",
-                    isSavedSent
-                      ? "bg-[#f59e0b] border-[#f59e0b] text-white"
-                      : "bg-[var(--surface)] border-[var(--border)] text-[var(--muted)] hover:text-[var(--fg)] hover:border-[var(--fg)]"
-                  )}
-                  type="button"
-                >
-                  {isSavedSent ? '⭐ 已存句' : '☆ 存例句'}
-                </button>
-              </div>
+                    {/* Subtitle bilingual content */}
+                    <div className="space-y-2 pr-12">
+                      {/* English text (word clickable) */}
+                      {subtitleMode !== 'zh' && subtitleMode !== 'off' && (
+                        <p className={cn(
+                          "text-lg leading-relaxed tracking-wide font-[var(--font-display)] transition duration-200",
+                          isActive ? "text-[var(--accent)] font-bold" : "text-[var(--fg)] font-semibold"
+                        )}>
+                          {renderSentenceWords(cue.english)}
+                        </p>
+                      )}
+                      {/* Chinese text */}
+                      {subtitleMode !== 'en' && subtitleMode !== 'off' && (
+                        <p className="text-sm text-[var(--muted)] leading-relaxed">
+                          {cue.chinese}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Action buttons (bookmark) */}
+                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--border-soft)_50%,transparent)] pt-3">
+                      {/* Bookmark Sentence button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleBookmarkSentence(cue, isSavedSent)
+                        }}
+                        className={cn(
+                          "px-3 py-1.5 rounded-[var(--radius-pill)] text-xs font-bold border transition cursor-pointer flex items-center gap-1 shadow-sm",
+                          isSavedSent
+                            ? "bg-[#f59e0b] border-[#f59e0b] text-white"
+                            : "bg-[var(--surface)] border-[var(--border)] text-[var(--muted)] hover:text-[var(--fg)] hover:border-[var(--fg)]"
+                        )}
+                        type="button"
+                      >
+                        {isSavedSent ? '⭐ 已存句' : '☆ 存例句'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          )
-        })}
+          </div>
+        </main>
       </div>
 
       {/* Hidden Audio Player Tag */}
@@ -509,7 +568,7 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
 
       {/* Sticky Bottom Control Panel */}
       <footer
-        className="player fixed bottom-0 left-0 right-0 z-30 min-h-[146px] sm:min-h-[88px] pb-[env(safe-area-inset-bottom)]"
+        className="player"
         style={{ height: 'var(--player-h)' }}
       >
         {/* 1. Metadata (left) */}
