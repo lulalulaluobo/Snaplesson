@@ -1,0 +1,13 @@
+{
+  "name": "@snaplesson/api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  }
+}

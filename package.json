@@ -1,0 +1,21 @@
+{
+  "name": "snaplesson",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "node tools/dev.mjs",
+    "build": "npm run build:web",
+    "start": "node apps/api/src/server.js",
+    "serve": "npm run build:web && node apps/api/src/server.js",
+    "dev:api": "npm run dev -w apps/api",
+    "start:api": "npm run start -w apps/api",
+    "test:api": "npm run test -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "build:web": "npm run build -w apps/web",
+    "lint:web": "npm run lint -w apps/web"
+  }
+}
