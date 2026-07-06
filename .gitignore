@@ -1,9 +1,35 @@
-# standard ignores
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+
+# Logs
+*.log
+
+# IDE & tools
 .gemini/
 .obsidian/workspace.json
-node_modules/
-dist/
-references/
+.agents/
+.codegraph/
+.trellis/
+
+# SQLite database files (contains API keys, user data, course content)
+*.db
+*.sqlite
 *.db-shm
 *.db-wal
-*.log
+
+# Resource directory (contains API keys in db and user-generated course audio/data)
+resource/
+!resource/.gitkeep
+
+# Environment files (never commit actual secrets)
+.env
+.env.local
+.env.production
+# Allow the example template
+!.env.example
+
+# OS
+.DS_Store
