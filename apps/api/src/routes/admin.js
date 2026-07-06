@@ -1,8 +1,11 @@
+import path from 'node:path'
+import { existsSync, rmSync } from 'node:fs'
+
 // admin 域路由：用户管理（仅 admin 角色可访问）。
 export async function handleAdminRoutes(req, res, url, ctx) {
   if (!url.pathname.startsWith('/api/admin/')) return false
 
-  const { db, getAuthenticatedUser, parseJsonBody, json } = ctx
+  const { db, getAuthenticatedUser, parseJsonBody, json, resourceDir } = ctx
 
   const user = await getAuthenticatedUser(req, db)
   if (!user || user.role !== 'admin') {
@@ -64,6 +67,23 @@ export async function handleAdminRoutes(req, res, url, ctx) {
         json(res, 400, { error: '无法删除管理员账户' })
         return true
       }
+
+      // Delete all lessons created by this user and clean up their files on disk
+      const lessons = db.prepare('SELECT id FROM lessons WHERE username = ?').all(username)
+      for (const lesson of lessons) {
+        const lessonDir = path.join(resourceDir, lesson.id)
+        try {
+          if (existsSync(lessonDir)) {
+            rmSync(lessonDir, { recursive: true, force: true })
+          }
+        } catch (fsErr) {
+          console.error('Failed to delete user lesson folder on user deletion:', lessonDir, fsErr)
+        }
+        db.prepare('DELETE FROM lessons WHERE id = ?').run(lesson.id)
+        db.prepare('DELETE FROM reviews WHERE lessonId = ?').run(lesson.id)
+      }
+
+      // Delete user row
       db.prepare('DELETE FROM users WHERE username = ?').run(username)
       json(res, 200, { ok: true })
     } catch (err) {

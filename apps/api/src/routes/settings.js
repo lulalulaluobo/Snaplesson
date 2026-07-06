@@ -37,9 +37,29 @@ export function getEffectiveUserSettings(db) {
 }
 
 export async function handleSettingsRoutes(req, res, url, ctx) {
-  if (url.pathname !== '/api/settings' && url.pathname !== '/api/user/settings') return false
+  if (url.pathname !== '/api/settings' && url.pathname !== '/api/settings/public' && url.pathname !== '/api/user/settings') return false
 
   const { db, getAuthenticatedUser, parseJsonBody, json } = ctx
+
+  // Handle public route first (for any authenticated user)
+  if (url.pathname === '/api/settings/public' && req.method === 'GET') {
+    const user = await getAuthenticatedUser(req, db)
+    if (!user) {
+      json(res, 401, { error: '未登录' })
+      return true
+    }
+    try {
+      const setting = getEffectiveUserSettings(db)
+      json(res, 200, {
+        tts_provider: setting.tts_provider || 'edge',
+        ocr_provider: setting.ocr_provider || 'unisound',
+        openai_model: setting.openai_model || 'gpt-4o-mini'
+      })
+    } catch (err) {
+      json(res, 500, { error: '获取公共配置失败' })
+    }
+    return true
+  }
 
   const user = await getAuthenticatedUser(req, db)
   if (!user) {

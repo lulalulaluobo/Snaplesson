@@ -50,7 +50,8 @@ export async function handleCoursesRoutes(req, res, url, ctx) {
             subtitle: true,
             transcript: false
           },
-          courseId: dbLesson.courseId
+          courseId: dbLesson.courseId,
+          username: dbLesson.username
         }
       })
 
@@ -155,6 +156,92 @@ export async function handleCoursesRoutes(req, res, url, ctx) {
       json(res, 200, { success: true })
     } catch (err) {
       console.error('Delete course-folder failed:', err)
+      json(res, 500, { error: '服务内部错误' })
+    }
+    return true
+  }
+
+  // 5. DELETE /api/courses/lessons/:id
+  if (pathname.startsWith('/api/courses/lessons/') && method === 'DELETE') {
+    const user = await getAuthenticatedUser(req, db)
+    if (!user) {
+      json(res, 401, { error: '未登录' })
+      return true
+    }
+    const lessonId = decodeURIComponent(pathname.slice('/api/courses/lessons/'.length))
+    try {
+      const lesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(lessonId)
+      if (!lesson) {
+        json(res, 404, { error: '课程不存在' })
+        return true
+      }
+      // Check permission: must be creator or admin
+      if (user.role !== 'admin' && lesson.username !== user.username) {
+        json(res, 403, { error: '权限不足，只能删除自己创建的课程' })
+        return true
+      }
+
+      // Delete files
+      const lessonDir = path.join(resourceDir, lesson.id)
+      try {
+        if (existsSync(lessonDir)) {
+          rmSync(lessonDir, { recursive: true, force: true })
+        }
+      } catch (fsErr) {
+        console.error('Failed to delete lesson folder:', lessonDir, fsErr)
+      }
+
+      db.prepare('DELETE FROM lessons WHERE id = ?').run(lessonId)
+      db.prepare('DELETE FROM reviews WHERE lessonId = ?').run(lessonId)
+
+      json(res, 200, { success: true })
+    } catch (err) {
+      console.error('Delete lesson failed:', err)
+      json(res, 500, { error: '服务内部错误' })
+    }
+    return true
+  }
+
+  // 6. POST /api/courses/lessons/batch-delete
+  if (pathname === '/api/courses/lessons/batch-delete' && method === 'POST') {
+    const user = await getAuthenticatedUser(req, db)
+    if (!user) {
+      json(res, 401, { error: '未登录' })
+      return true
+    }
+    try {
+      const { ids } = await parseJsonBody(req)
+      if (!Array.isArray(ids) || ids.length === 0) {
+        json(res, 400, { error: '未选择任何课时' })
+        return true
+      }
+
+      for (const lessonId of ids) {
+        const lesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(lessonId)
+        if (!lesson) continue
+        
+        // Check permission: must be creator or admin
+        if (user.role !== 'admin' && lesson.username !== user.username) {
+          continue
+        }
+
+        // Delete files
+        const lessonDir = path.join(resourceDir, lesson.id)
+        try {
+          if (existsSync(lessonDir)) {
+            rmSync(lessonDir, { recursive: true, force: true })
+          }
+        } catch (fsErr) {
+          console.error('Failed to delete lesson folder in batch delete:', lessonDir, fsErr)
+        }
+
+        db.prepare('DELETE FROM lessons WHERE id = ?').run(lessonId)
+        db.prepare('DELETE FROM reviews WHERE lessonId = ?').run(lessonId)
+      }
+
+      json(res, 200, { success: true })
+    } catch (err) {
+      console.error('Batch delete lessons failed:', err)
       json(res, 500, { error: '服务内部错误' })
     }
     return true

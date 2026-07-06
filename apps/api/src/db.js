@@ -57,6 +57,7 @@ export function createDb(dbPath) {
       audioFile TEXT NOT NULL,
       subtitlesJson TEXT, -- JSON mapping language keys to file names
       createdAt INTEGER NOT NULL,
+      username TEXT, -- Creator user association
       FOREIGN KEY (courseId) REFERENCES courses(id) ON DELETE CASCADE
     );
 
@@ -84,6 +85,18 @@ export function createDb(dbPath) {
       FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
     );
   `)
+
+  // Migration: Add username column to lessons table if it does not exist
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(lessons)").all()
+    const hasUsername = tableInfo.some(column => column.name === 'username')
+    if (!hasUsername) {
+      db.exec("ALTER TABLE lessons ADD COLUMN username TEXT")
+      console.log("Database migration: Added 'username' column to 'lessons' table.")
+    }
+  } catch (err) {
+    console.error("Failed to run database migration for lessons table:", err)
+  }
 
   // Pre-seed a preset course for custom lessons
   try {

@@ -16,6 +16,7 @@ interface CourseLesson {
   title: string
   level: string
   courseId: string
+  username?: string
   resources: {
     lesson: string
     subtitle: string
@@ -41,7 +42,17 @@ export function CoursesPage() {
   const [showFolderModal, setShowFolderModal] = useState(false)
   const [folderName, setFolderName] = useState('')
   const [folderError, setFolderError] = useState<string | null>(null)
-  const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ username: string; role: string } | null>(null)
+
+  const [publicSettings, setPublicSettings] = useState<{
+    tts_provider: string
+    ocr_provider: string
+    openai_model: string
+  } | null>(null)
+
+  const [selectedTtsProvider, setSelectedTtsProvider] = useState('edge')
+  const [selectedTtsVoice, setSelectedTtsVoice] = useState('en-US-EmmaNeural')
+  const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>([])
 
   const fetchData = async () => {
     try {
@@ -69,6 +80,12 @@ export function CoursesPage() {
         const lessonsData = await lessonsRes.json()
         setLessons(lessonsData.lessons || [])
       }
+
+      // Fetch public settings
+      const settingsRes = await fetch('/api/settings/public')
+      if (settingsRes.ok) {
+        setPublicSettings(await settingsRes.json())
+      }
     } catch (err) {
       console.error('Failed to fetch data:', err)
     } finally {
@@ -79,6 +96,71 @@ export function CoursesPage() {
   useEffect(() => {
     fetchData()
   }, [])
+
+  const handleDeleteLesson = async (lessonId: string) => {
+    if (!window.confirm('确定要删除这节课时吗？删除后相关音频和配音将无法找回。')) return
+    try {
+      const res = await fetch(`/api/courses/lessons/${lessonId}`, {
+        method: 'DELETE'
+      })
+      if (res.ok) {
+        setLessons(prev => prev.filter(l => l.id !== lessonId))
+      } else {
+        const errData = await res.json()
+        alert(errData.error || '删除课时失败')
+      }
+    } catch (e) {
+      console.error(e)
+      alert('删除失败，网络异常')
+    }
+  }
+
+  const handleToggleSelect = (lessonId: string) => {
+    setSelectedLessonIds(prev =>
+      prev.includes(lessonId)
+        ? prev.filter(id => id !== lessonId)
+        : [...prev, lessonId]
+    )
+  }
+
+  const handleSelectAll = (deletableIds: string[]) => {
+    setSelectedLessonIds(deletableIds)
+  }
+
+  const handleInvertSelect = (deletableIds: string[]) => {
+    setSelectedLessonIds(prev => deletableIds.filter(id => !prev.includes(id)))
+  }
+
+  const handleClearSelect = () => {
+    setSelectedLessonIds([])
+  }
+
+  const handleBatchDelete = async () => {
+    if (selectedLessonIds.length === 0) return
+    if (!window.confirm(`确定要批量删除选中的 ${selectedLessonIds.length} 个课时吗？删除后相关配置将不可恢复。`)) return
+
+    setLoading(true)
+    try {
+      const res = await fetch('/api/courses/lessons/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedLessonIds })
+      })
+
+      if (res.ok) {
+        setLessons(prev => prev.filter(l => !selectedLessonIds.includes(l.id)))
+        setSelectedLessonIds([])
+      } else {
+        const err = await res.json()
+        alert(err.error || '批量删除失败')
+      }
+    } catch (e) {
+      console.error(e)
+      alert('批量删除失败，网络异常')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -138,7 +220,9 @@ export function CoursesPage() {
         body: JSON.stringify({
           title: newTitle.trim(),
           text: newText.trim(),
-          level: newLevel
+          level: newLevel,
+          ttsProvider: selectedTtsProvider,
+          ttsVoice: selectedTtsVoice
         })
       })
 
@@ -275,52 +359,223 @@ export function CoursesPage() {
       </div>
 
       {/* Custom Lessons card stack */}
-      {currentLessons.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-[var(--border)] rounded-[var(--radius-lg)] bg-[var(--surface-warm)]">
-          <p className="text-[var(--muted)] text-sm">当前分类下尚无拍照课时</p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="mt-4 px-4 py-2 text-xs font-bold rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-on)] hover:opacity-90 transition cursor-pointer"
-          >
-            马上创建第一个点读课时
-          </button>
-        </div>
-      ) : (
-        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {currentLessons.map((item) => {
-            const levelBadge = lessonLevelBadge(item.level)
-            return (
-              <Link
-                key={item.id}
-                to={`/courses/${item.id}`}
-                className="flex flex-col justify-between p-5 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] shadow-sm hover:border-[var(--accent)] transition duration-200"
+      {(() => {
+        const myLessons = currentLessons.filter(l => l.username === currentUser?.username || (!l.username && currentUser?.username === 'admin'))
+        const sharedLessons = currentLessons.filter(l => l.username !== currentUser?.username && !(!l.username && currentUser?.username === 'admin'))
+        
+        const deletableIds = currentLessons
+          .filter(l => currentUser?.role === 'admin' || l.username === currentUser?.username)
+          .map(l => l.id)
+
+        if (currentLessons.length === 0) {
+          return (
+            <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-[var(--border)] rounded-[var(--radius-lg)] bg-[var(--surface-warm)]">
+              <p className="text-[var(--muted)] text-sm">当前分类下尚无拍照课时</p>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="mt-4 px-4 py-2 text-xs font-bold rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-on)] hover:opacity-90 transition cursor-pointer"
               >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-[var(--font-mono)] text-[10px] font-semibold text-[var(--meta)]">
-                      #{item.id}
-                    </span>
-                    {levelBadge && (
-                      <span className={levelBadge.className}>
-                        {levelBadge.label}
-                      </span>
-                    )}
+                马上创建第一个点读课时
+              </button>
+            </div>
+          )
+        }
+
+        return (
+          <div className="space-y-6">
+            {/* Batch Action Toolbar */}
+            {deletableIds.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] text-xs font-semibold shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--muted)]">已选择 {selectedLessonIds.length} / {deletableIds.length} 个课时</span>
+                  <button
+                    onClick={() => handleSelectAll(deletableIds)}
+                    className="px-2.5 py-1.5 rounded bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--border-soft)] hover:text-[var(--accent)] transition cursor-pointer"
+                    type="button"
+                  >
+                    全选
+                  </button>
+                  <button
+                    onClick={() => handleInvertSelect(deletableIds)}
+                    className="px-2.5 py-1.5 rounded bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--border-soft)] hover:text-[var(--accent)] transition cursor-pointer"
+                    type="button"
+                  >
+                    反选
+                  </button>
+                  <button
+                    onClick={handleClearSelect}
+                    className="px-2.5 py-1.5 rounded bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--border-soft)] transition cursor-pointer text-[var(--muted)]"
+                    type="button"
+                  >
+                    清除
+                  </button>
+                </div>
+                {selectedLessonIds.length > 0 && (
+                  <button
+                    onClick={handleBatchDelete}
+                    className="px-3 py-1.5 rounded bg-[var(--danger)] text-white hover:opacity-90 transition cursor-pointer font-bold shadow-sm"
+                    type="button"
+                  >
+                    🗑️ 批量删除 ({selectedLessonIds.length})
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-8">
+              {/* 1. Self Created */}
+              <div>
+                <h2 className="text-xs font-extrabold text-[var(--muted)] uppercase tracking-wider mb-4 border-l-2 border-[var(--accent)] pl-2">
+                  自建课时 ({myLessons.length})
+                </h2>
+                {myLessons.length === 0 ? (
+                  <p className="text-xs text-[var(--muted)] italic p-4 border border-dashed border-[var(--border-soft)] rounded-[var(--radius-md)] bg-[var(--surface-warm)]">
+                    暂无自建点读课件。
+                  </p>
+                ) : (
+                  <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {myLessons.map((item) => {
+                      const levelBadge = lessonLevelBadge(item.level)
+                      const canDelete = currentUser?.role === 'admin' || item.username === currentUser?.username
+                      return (
+                        <div key={item.id} className="relative group">
+                          {canDelete && (
+                            <div className="absolute top-4 left-4 z-20">
+                              <input
+                                type="checkbox"
+                                checked={selectedLessonIds.includes(item.id)}
+                                onChange={(e) => {
+                                  e.stopPropagation()
+                                  handleToggleSelect(item.id)
+                                }}
+                                className="size-4 rounded border-[var(--border)] accent-[var(--accent)] cursor-pointer"
+                              />
+                            </div>
+                          )}
+                          <Link
+                            to={`/courses/${item.id}`}
+                            className="flex flex-col justify-between p-5 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] shadow-sm hover:border-[var(--accent)] transition duration-200 h-full min-h-[140px]"
+                          >
+                            <div>
+                              <div className={cn("flex items-center justify-between gap-2 pr-6", canDelete ? "pl-5" : "")}>
+                                <span className="font-[var(--font-mono)] text-[10px] font-semibold text-[var(--meta)]">
+                                  #{item.id}
+                                </span>
+                                {levelBadge && (
+                                  <span className={levelBadge.className}>
+                                    {levelBadge.label}
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className={cn("mt-3 font-semibold text-[var(--fg)] text-base line-clamp-2 pr-6", canDelete ? "pl-5" : "")}>
+                                {item.title}
+                              </h3>
+                            </div>
+                            <div className="mt-5 flex items-center gap-1 text-xs font-bold text-[var(--accent)]">
+                              进入点读学习
+                              <svg className="w-3.5 h-3.5 transform translate-x-0 group-hover:translate-x-1 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                              </svg>
+                            </div>
+                          </Link>
+                          {canDelete && (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleDeleteLesson(item.id)
+                              }}
+                              className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-[var(--surface)] border border-[var(--border-soft)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] transition cursor-pointer text-xs leading-none shadow-sm z-10"
+                              title="删除课程"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                  <h3 className="mt-3 font-semibold text-[var(--fg)] text-base line-clamp-2">
-                    {item.title}
-                  </h3>
-                </div>
-                <div className="mt-5 flex items-center gap-1 text-xs font-bold text-[var(--accent)]">
-                  进入点读学习
-                  <svg className="w-3.5 h-3.5 transform translate-x-0 group-hover:translate-x-1 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                  </svg>
-                </div>
-              </Link>
-            )
-          })}
-        </div>
-      )}
+                )}
+              </div>
+
+              {/* 2. Shared by Others */}
+              <div>
+                <h2 className="text-xs font-extrabold text-[var(--muted)] uppercase tracking-wider mb-4 border-l-2 border-[color-mix(in_srgb,var(--accent)_50%,var(--muted))] pl-2">
+                  他人共享的课时 ({sharedLessons.length})
+                </h2>
+                {sharedLessons.length === 0 ? (
+                  <p className="text-xs text-[var(--muted)] italic p-4 border border-dashed border-[var(--border-soft)] rounded-[var(--radius-md)] bg-[var(--surface-warm)]">
+                    暂无他人共享的点读课时。
+                  </p>
+                ) : (
+                  <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {sharedLessons.map((item) => {
+                      const levelBadge = lessonLevelBadge(item.level)
+                      const canDelete = currentUser?.role === 'admin' || item.username === currentUser?.username
+                      return (
+                        <div key={item.id} className="relative group">
+                          {canDelete && (
+                            <div className="absolute top-4 left-4 z-20">
+                              <input
+                                type="checkbox"
+                                checked={selectedLessonIds.includes(item.id)}
+                                onChange={(e) => {
+                                  e.stopPropagation()
+                                  handleToggleSelect(item.id)
+                                }}
+                                className="size-4 rounded border-[var(--border)] accent-[var(--accent)] cursor-pointer"
+                              />
+                            </div>
+                          )}
+                          <Link
+                            to={`/courses/${item.id}`}
+                            className="flex flex-col justify-between p-5 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] shadow-sm hover:border-[var(--accent)] transition duration-200 h-full min-h-[140px]"
+                          >
+                            <div>
+                              <div className={cn("flex items-center justify-between gap-2 pr-6", canDelete ? "pl-5" : "")}>
+                                <span className="font-[var(--font-mono)] text-[10px] font-semibold text-[var(--meta)]">
+                                  #{item.id}
+                                </span>
+                                {levelBadge && (
+                                  <span className={levelBadge.className}>
+                                    {levelBadge.label}
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className={cn("mt-3 font-semibold text-[var(--fg)] text-base line-clamp-2 pr-6", canDelete ? "pl-5" : "")}>
+                                {item.title}
+                              </h3>
+                            </div>
+                            <div className="mt-5 flex items-center gap-1 text-xs font-bold text-[var(--accent)]">
+                              进入点读学习
+                              <svg className="w-3.5 h-3.5 transform translate-x-0 group-hover:translate-x-1 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                              </svg>
+                            </div>
+                          </Link>
+                          {canDelete && (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleDeleteLesson(item.id)
+                              }}
+                              className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-[var(--surface)] border border-[var(--border-soft)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] transition cursor-pointer text-xs leading-none shadow-sm z-10"
+                              title="删除课程"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Folder Creation Modal */}
       {showFolderModal && (
@@ -363,23 +618,31 @@ export function CoursesPage() {
         </div>
       )}
 
+
       {/* Lesson Creation Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color-mix(in_srgb,var(--fg)_50%,transparent)] p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--bg)] p-6 shadow-lg">
-            <div className="flex items-center justify-between border-b border-[var(--border-soft)] pb-3">
-              <h3 className="font-[var(--font-display)] text-lg font-bold">📸 拍照/上传图片成课</h3>
+          <form
+            onSubmit={handleCreateLesson}
+            className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--bg)] shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-[var(--border-soft)] p-4 shrink-0">
+              <h3 className="font-[var(--font-display)] text-base font-bold flex items-center gap-1.5 text-[var(--fg)]">
+                <span>📸</span> 拍照/上传图片成课
+              </h3>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="text-[var(--muted)] hover:text-[var(--fg)] text-lg font-bold cursor-pointer"
+                className="text-[var(--muted)] hover:text-[var(--fg)] text-base font-bold cursor-pointer w-6 h-6 flex items-center justify-center rounded-full hover:bg-[var(--surface)] transition"
                 disabled={ocrLoading || createLoading}
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateLesson} className="mt-4 space-y-4">
+            {/* Scrollable Modal Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {/* Image OCR Trigger */}
               <div className="p-4 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] bg-[var(--surface-warm)] text-center">
                 <p className="text-xs text-[var(--muted)]">上传课本/打印资料的英文图片，AI 将自动进行 OCR 提取</p>
@@ -408,7 +671,7 @@ export function CoursesPage() {
                     type="text"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
+                    className="mt-1.5 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
                     placeholder="例如：三年级 Unit 1 课文"
                     disabled={createLoading}
                   />
@@ -420,13 +683,95 @@ export function CoursesPage() {
                   <select
                     value={newLevel}
                     onChange={(e) => setNewLevel(e.target.value)}
-                    className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
+                    className="mt-1.5 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
                     disabled={createLoading}
                   >
                     <option value="简单">简单 (Junior)</option>
                     <option value="中等">中等 (Medium)</option>
                     <option value="困难">困难 (Senior)</option>
                   </select>
+                </div>
+              </div>
+
+              {/* TTS Configuration Options */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)]">
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
+                    TTS 语音服务商 (TTS Service)
+                  </label>
+                  <select
+                    value={selectedTtsProvider}
+                    onChange={(e) => {
+                      const p = e.target.value
+                      setSelectedTtsProvider(p)
+                      if (p === 'edge') {
+                        setSelectedTtsVoice('en-US-EmmaNeural')
+                      } else if (p === 'unisound') {
+                        setSelectedTtsVoice('cn_female_shasha')
+                      } else if (p === 'mimo') {
+                        setSelectedTtsVoice('冰糖')
+                      }
+                    }}
+                    className="mt-1.5 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
+                    disabled={createLoading}
+                  >
+                    <option value="edge">微软 Edge TTS (系统默认)</option>
+                    {publicSettings?.tts_provider === 'unisound' && (
+                      <option value="unisound">云知声 Maas (管理员配置)</option>
+                    )}
+                    {publicSettings?.tts_provider === 'mimo' && (
+                      <option value="mimo">小米 MIMO (管理员配置)</option>
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
+                    发音人/音色 (Voice Speaker)
+                  </label>
+                  <select
+                    value={selectedTtsVoice}
+                    onChange={(e) => setSelectedTtsVoice(e.target.value)}
+                    className="mt-1.5 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
+                    disabled={createLoading}
+                  >
+                    {selectedTtsProvider === 'edge' && (
+                      <>
+                        <option value="en-US-EmmaNeural">Emma (美音女声 - 推荐)</option>
+                        <option value="en-US-GuyNeural">Guy (美音男声)</option>
+                        <option value="en-US-AndrewMultilingualNeural">Andrew (男声 Multilingual)</option>
+                        <option value="en-US-BrianNeural">Brian (英音男声)</option>
+                        <option value="en-US-AvaNeural">Ava (美音女声)</option>
+                      </>
+                    )}
+                    {selectedTtsProvider === 'unisound' && (
+                      <>
+                        <option value="cn_female_shasha">沙沙 (精品女声 - 推荐)</option>
+                        <option value="cn_female_ruolin">若琳 (精品女声)</option>
+                        <option value="cn_male_chenyu">陈羽 (精品男声)</option>
+                      </>
+                    )}
+                    {selectedTtsProvider === 'mimo' && (
+                      <>
+                        <option value="冰糖">冰糖 (甜美女声 - 推荐)</option>
+                        <option value="茉莉">茉莉 (温柔女声)</option>
+                        <option value="苏打">苏打 (磁性男声)</option>
+                        <option value="白桦">白桦 (稳重男声)</option>
+                        <option value="Mia">Mia (英文女声)</option>
+                        <option value="Chloe">Chloe (英文女声)</option>
+                        <option value="Milo">Milo (英文男声)</option>
+                        <option value="Dean">Dean (英文男声)</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+                {/* Information hint block */}
+                <div className="sm:col-span-2 text-[10px] text-[var(--muted)] flex flex-wrap gap-x-4 gap-y-1">
+                  <span>AI 大模型: <b className="text-[var(--fg)]">{publicSettings?.openai_model || 'gpt-4o-mini'}</b></span>
+                  <span>OCR 识别: <b className="text-[var(--fg)]">{
+                    publicSettings?.ocr_provider === 'mimo' ? '小米 MIMO' :
+                    publicSettings?.ocr_provider === 'zhipu' ? '智谱清言' :
+                    '云知声 Maas'
+                  }</b></span>
                 </div>
               </div>
 
@@ -438,7 +783,7 @@ export function CoursesPage() {
                 <textarea
                   value={newText}
                   onChange={(e) => setNewText(e.target.value)}
-                  className="mt-2 w-full h-32 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)] px-4 py-2.5 text-sm outline-none focus:border-[var(--accent)] resize-none"
+                  className="mt-1.5 w-full h-24 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] resize-none"
                   placeholder="识别出的英文内容将显示在这里，您可以手动删减、清洗格式，确保英文标点正确..."
                   disabled={createLoading}
                 />
@@ -449,30 +794,30 @@ export function CoursesPage() {
                   {error}
                 </div>
               )}
+            </div>
 
-              {/* Form Action buttons */}
-              <div className="flex justify-end gap-2 border-t border-[var(--border-soft)] pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-xs font-bold rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg)] hover:bg-[var(--surface)] transition cursor-pointer"
-                  disabled={createLoading}
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  className={cn(
-                    "px-4 py-2 text-xs font-bold rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-on)] hover:opacity-90 transition cursor-pointer",
-                    createLoading && "opacity-50 pointer-events-none"
-                  )}
-                  disabled={createLoading}
-                >
-                  {createLoading ? 'AI 正在翻译并合成课程音频(约20秒)...' : '确定生成课程'}
-                </button>
-              </div>
-            </form>
-          </div>
+            {/* Modal Footer (Sticky/Docked at bottom) */}
+            <div className="flex justify-end gap-2 border-t border-[var(--border-soft)] p-4 shrink-0 bg-[var(--bg)]">
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="px-4 py-2 text-xs font-bold rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg)] hover:bg-[var(--surface)] transition cursor-pointer"
+                disabled={createLoading}
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                className={cn(
+                  "px-4 py-2 text-xs font-bold rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-on)] hover:opacity-90 transition cursor-pointer",
+                  createLoading && "opacity-50 pointer-events-none"
+                )}
+                disabled={createLoading}
+              >
+                {createLoading ? 'AI 正在生成课程...' : '确定生成课程'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

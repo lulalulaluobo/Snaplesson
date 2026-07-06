@@ -242,6 +242,20 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
     }
   }
 
+  const activeCueIndex = cues.findIndex(c => c.id === activeCueId)
+
+  const handlePrevSentence = () => {
+    if (activeCueIndex > 0) {
+      handleSeekCue(cues[activeCueIndex - 1])
+    }
+  }
+
+  const handleNextSentence = () => {
+    if (activeCueIndex < cues.length - 1) {
+      handleSeekCue(cues[activeCueIndex + 1])
+    }
+  }
+
   // Word Clicking
   const handleWordClick = async (word: string) => {
     // Pause lesson audio first
@@ -432,7 +446,7 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
               {/* Subtitle bilingual content */}
               <div className="space-y-2 pr-12">
                 {/* English text (word clickable) */}
-                {subtitleMode !== 'zh' && (
+                {subtitleMode !== 'zh' && subtitleMode !== 'off' && (
                   <p className={cn(
                     "text-lg leading-relaxed tracking-wide font-[var(--font-display)] transition duration-200",
                     isActive ? "text-[var(--accent)] font-bold" : "text-[var(--fg)] font-semibold"
@@ -457,14 +471,14 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
                     toggleBookmarkSentence(cue, isSavedSent)
                   }}
                   className={cn(
-                    "px-3 py-1.5 rounded-[var(--radius-pill)] text-xs font-bold border transition cursor-pointer flex items-center gap-1",
+                    "px-3 py-1.5 rounded-[var(--radius-pill)] text-xs font-bold border transition cursor-pointer flex items-center gap-1 shadow-sm",
                     isSavedSent
-                      ? "bg-[color-mix(in_srgb,var(--warn)_15%,transparent)] text-[#d4a000] border-[color-mix(in_srgb,var(--warn)_50%,transparent)]"
-                      : "bg-[var(--surface)] border-[var(--border)] text-[var(--muted)] hover:text-[var(--fg)]"
+                      ? "bg-[#f59e0b] border-[#f59e0b] text-white"
+                      : "bg-[var(--surface)] border-[var(--border)] text-[var(--muted)] hover:text-[var(--fg)] hover:border-[var(--fg)]"
                   )}
                   type="button"
                 >
-                  ⭐ {isSavedSent ? '已存句' : '存例句'}
+                  {isSavedSent ? '⭐ 已存句' : '☆ 存例句'}
                 </button>
               </div>
             </div>
@@ -482,83 +496,147 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
       />
 
       {/* Sticky Bottom Control Panel */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 h-[var(--player-h)] border-t border-[var(--border-soft)] bg-[color-mix(in_srgb,var(--bg)_95%,transparent)] px-4 py-2 backdrop-blur-lg flex flex-col justify-center gap-1 shadow-md">
-        {/* Progress bar */}
-        <div className="flex items-center gap-2 max-w-xl mx-auto w-full">
-          <span className="text-[10px] font-[var(--font-mono)] text-[var(--muted)] shrink-0">
-            {formatTime(currentTime)}
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={duration || 100}
-            value={currentTime}
-            onChange={(e) => handleSeek(Number(e.target.value))}
-            className="flex-1 h-1.5 rounded-full bg-[var(--surface)] outline-none accent-[var(--accent)] cursor-pointer"
-          />
-          <span className="text-[10px] font-[var(--font-mono)] text-[var(--muted)] shrink-0">
-            {formatTime(duration)}
-          </span>
-        </div>
-
-        {/* Buttons */}
-        <div className="flex items-center justify-between max-w-xl mx-auto w-full px-2">
-          {/* Loop Mode */}
-          <button
-            onClick={() => setLoopSentence(!loopSentence)}
-            className={cn(
-              "px-3 py-1.5 rounded-[var(--radius-pill)] text-xs font-bold border transition cursor-pointer",
-              loopSentence
-                ? "bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] border-[var(--accent)] text-[var(--accent)]"
-                : "bg-[var(--surface)] border-[var(--border)] text-[var(--muted)]"
-            )}
-            type="button"
-            title="单句循环模式"
-          >
-            🔁 {loopSentence ? '单句循环: 开' : '单句循环: 关'}
-          </button>
-
-          {/* Play/Pause */}
-          <button
-            onClick={handlePlayPause}
-            className="size-11 rounded-full bg-[var(--accent)] text-[var(--accent-on)] text-xl font-bold flex items-center justify-center shadow hover:scale-105 active:scale-95 transition cursor-pointer"
-            type="button"
-          >
-            {isPlaying ? '⏸' : '▶'}
-          </button>
-
-          {/* Speed & Subtitle options */}
-          <div className="flex items-center gap-1.5">
-            {/* Speed Rate */}
-            <button
-              onClick={() => {
-                const nextRate = playbackRate === 1.0 ? 0.75 : 1.0
-                setPlaybackRate(nextRate)
-                if (audioRef.current) {
-                  audioRef.current.playbackRate = nextRate
-                }
-              }}
-              className="px-2.5 py-1.5 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--surface)] text-xs font-bold text-[var(--fg)] cursor-pointer"
-              type="button"
-            >
-              🚀 {playbackRate.toFixed(2)}x
-            </button>
-
-            {/* Subtitle toggler */}
-            <button
-              onClick={() => {
-                const list: Array<'bilingual' | 'en' | 'zh' | 'off'> = ['bilingual', 'en', 'zh', 'off']
-                const next = list[(list.indexOf(subtitleMode) + 1) % list.length]
-                setSubtitleMode(next)
-              }}
-              className="px-2.5 py-1.5 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--surface)] text-xs font-bold text-[var(--fg)] cursor-pointer"
-              type="button"
-            >
-              💬 {subtitleMode === 'bilingual' ? '双语' : subtitleMode === 'en' ? '英文' : subtitleMode === 'zh' ? '中文' : '无字'}
-            </button>
+      <footer className="player fixed bottom-0 left-0 right-0 z-30 h-[var(--player-h)]">
+        {/* 1. Metadata (left) */}
+        <div className="now">
+          <div className={cn(
+            "cover level-badge font-extrabold flex items-center justify-center text-xs rounded-[var(--radius-md)]",
+            lesson.level === '简单' ? 'level-b' : lesson.level === '困难' ? 'level-d' : 'level-c'
+          )}>
+            {lesson.level === '简单' ? 'A1' : lesson.level === '困难' ? 'C1' : 'B1'}
+          </div>
+          <div className="now-text">
+            <div className="now-title text-[var(--fg)] font-semibold text-xs truncate max-w-[120px] sm:max-w-none">
+              {lesson.title}
+            </div>
+            <div className="now-sub text-[10px] text-[var(--muted)]">
+              LESSON #{lesson.id}
+            </div>
           </div>
         </div>
-      </div>
+
+        {/* 2. Controls (center) */}
+        <div className="controls">
+          <div className="btn-row">
+            <button
+              className="ctrl"
+              type="button"
+              onClick={handlePrevSentence}
+              disabled={activeCueIndex <= 0}
+              title="上一句"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7 5h2v14H7zM20 5v14L9 12z" />
+              </svg>
+            </button>
+            
+            <button
+              className={cn("ctrl play", isPlaying && "playing")}
+              onClick={handlePlayPause}
+              type="button"
+              title={isPlaying ? '暂停' : '播放'}
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                {isPlaying ? (
+                  <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+                ) : (
+                  <path d="M8 5v14l11-7z" />
+                )}
+              </svg>
+            </button>
+
+            <button
+              className="ctrl"
+              type="button"
+              onClick={handleNextSentence}
+              disabled={activeCueIndex >= cues.length - 1}
+              title="下一句"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M15 5h2v14h-2zM4 5l11 7L4 19z" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="scrub">
+            <span className="time">{formatTime(currentTime)}</span>
+            <input
+              className="track"
+              type="range"
+              min="0"
+              max={duration || 0}
+              step="0.1"
+              value={currentTime}
+              disabled={duration <= 0}
+              style={{
+                background: `linear-gradient(to right, var(--fg) 0%, var(--fg) ${(duration > 0 ? (currentTime / duration) * 100 : 0)}%, var(--border) ${(duration > 0 ? (currentTime / duration) * 100 : 0)}%, var(--border) 100%)`,
+              }}
+              onChange={(e) => handleSeek(Number(e.target.value))}
+            />
+            <span className="time">{formatTime(duration)}</span>
+          </div>
+        </div>
+
+        {/* 3. Extras (right) */}
+        <div className="extras">
+          {/* Subtitle dropdown */}
+          <div className="relative flex items-center">
+            <select
+              value={subtitleMode}
+              onChange={(e) => {
+                setSubtitleMode(e.target.value as 'bilingual' | 'en' | 'zh' | 'off')
+              }}
+              className="subtitle-btn appearance-none cursor-pointer text-center px-4"
+            >
+              <option value="bilingual">中/英</option>
+              <option value="en">英文</option>
+              <option value="zh">中文</option>
+              <option value="off">无字</option>
+            </select>
+          </div>
+
+          <span className="extras-sep" />
+
+          {/* Loop toggle */}
+          <button
+            className={cn("mode-toggle", loopSentence && "active")}
+            onClick={() => setLoopSentence(!loopSentence)}
+            type="button"
+            title={loopSentence ? '单句循环: 开' : '单句循环: 关'}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+              <path d="M17 2.8 20.2 6 17 9.2" />
+              <path d="M4 11V9a3 3 0 0 1 3-3h13" />
+              <path d="M7 21.2 3.8 18 7 14.8" />
+              <path d="M20 13v2a3 3 0 0 1-3 3H4" />
+              {loopSentence && <text x="12" y="15" fontSize="8" fontWeight="bold" fill="currentColor" textAnchor="middle">1</text>}
+            </svg>
+          </button>
+
+          <span className="extras-sep" />
+
+          {/* Speed dropdown */}
+          <div className="relative flex items-center">
+            <select
+              value={playbackRate}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value)
+                setPlaybackRate(val)
+                if (audioRef.current) {
+                  audioRef.current.playbackRate = val
+                }
+              }}
+              className="speed appearance-none cursor-pointer text-center px-3"
+            >
+              <option value="0.5">0.5x</option>
+              <option value="0.75">0.75x</option>
+              <option value="1">1.0x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+            </select>
+          </div>
+        </div>
+      </footer>
 
       {/* Dictionary Translation Bottom-Sheet Modal */}
       {selectedWord && (

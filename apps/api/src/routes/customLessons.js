@@ -259,7 +259,7 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
     let lessonPersisted = false
 
     try {
-      const { title, text, level } = await parseJsonBody(req)
+      const { title, text, level, ttsProvider, ttsVoice } = await parseJsonBody(req)
       if (!title || !title.trim() || !text || !text.trim()) {
         json(res, 400, { error: '标题与课文内容不能为空' })
         return true
@@ -269,6 +269,14 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
       if (!setting || !setting.openai_api_key) {
         json(res, 400, { error: '管理员尚未配置 AI 大模型密钥，请联系管理员配置。' })
         return true
+      }
+
+      // Override settings from request if present
+      if (ttsProvider) {
+        setting.tts_provider = ttsProvider
+      }
+      if (ttsVoice) {
+        setting.tts_voice = ttsVoice
       }
 
       // Generate a unique numeric ID for the lesson
@@ -471,8 +479,8 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
       }
 
       db.prepare(`
-        INSERT INTO lessons (id, courseId, title, level, audioFile, subtitlesJson, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO lessons (id, courseId, title, level, audioFile, subtitlesJson, createdAt, username)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         nextId,
         courseId,
@@ -480,7 +488,8 @@ export async function handleCustomLessonsRoutes(req, res, url, ctx) {
         level || '简单',
         'lesson.mp3',
         JSON.stringify(subsMap),
-        Date.now()
+        Date.now(),
+        user.username
       )
       lessonPersisted = true
 

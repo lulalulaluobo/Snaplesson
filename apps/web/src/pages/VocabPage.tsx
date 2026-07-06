@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { formatTime } from '@/lib/courseUtils'
@@ -25,6 +25,10 @@ export function VocabPage() {
   const [sentences, setSentences] = useState<SavedSentence[]>([])
   const [loading, setLoading] = useState(true)
 
+  const [playingSentenceId, setPlayingSentenceId] = useState<string | null>(null)
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null)
+  const timerRef = useRef<number | null>(null)
+
   const loadData = async () => {
     try {
       setLoading(true)
@@ -42,6 +46,16 @@ export function VocabPage() {
 
   useEffect(() => {
     loadData()
+
+    // Cleanup on unmount
+    return () => {
+      if (activeAudioRef.current) {
+        activeAudioRef.current.pause()
+      }
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current)
+      }
+    }
   }, [])
 
   const deleteWord = async (id: string) => {
@@ -62,6 +76,10 @@ export function VocabPage() {
       const res = await fetch(`/api/user/reviews/${id}`, { method: 'DELETE' })
       if (res.ok) {
         setSentences(prev => prev.filter(s => s.id !== id))
+        if (playingSentenceId === id) {
+          if (activeAudioRef.current) activeAudioRef.current.pause()
+          setPlayingSentenceId(null)
+        }
       }
     } catch (e) {
       console.error(e)
@@ -74,6 +92,43 @@ export function VocabPage() {
     audio.play().catch((err) => console.error('播放发音失败:', err))
   }
 
+  const playOriginalSentenceAudio = (id: string, lessonId: string, start: number, end: number) => {
+    // Stop current playing
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause()
+      activeAudioRef.current = null
+    }
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+
+    if (playingSentenceId === id) {
+      setPlayingSentenceId(null)
+      return
+    }
+
+    const audio = new Audio(`/api/resources/${lessonId}/lesson.mp3`)
+    activeAudioRef.current = audio
+    setPlayingSentenceId(id)
+
+    audio.currentTime = start
+    audio.play().catch((err) => {
+      console.error('播放例句原文失败:', err)
+      setPlayingSentenceId(null)
+    })
+
+    const durationMs = Math.max(500, (end - start) * 1000 + 400) // add slight buffer for completeness
+    timerRef.current = window.setTimeout(() => {
+      audio.pause()
+      setPlayingSentenceId(null)
+    }, durationMs)
+
+    audio.onended = () => {
+      setPlayingSentenceId(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center text-[var(--muted)]">
@@ -83,10 +138,10 @@ export function VocabPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl space-y-6">
       {/* Title */}
       <div className="border-b border-[var(--border-soft)] pb-4">
-        <h1 className="font-[var(--font-display)] text-2xl font-bold font-semibold">我的收藏本</h1>
+        <h1 className="font-[var(--font-display)] text-2xl font-bold">我的收藏本</h1>
         <p className="text-xs text-[var(--muted)] mt-1">分类管理您在阅读中随手收藏的生词与经典句子</p>
       </div>
 
@@ -167,43 +222,61 @@ export function VocabPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {sentences.map(s => (
-              <div
-                key={s.id}
-                className="p-4 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)] flex flex-col sm:flex-row justify-between gap-4 shadow-sm hover:border-[var(--border)] transition"
-              >
-                <div className="space-y-2 flex-1">
-                  <p className="font-semibold text-[var(--fg)] text-base font-[var(--font-display)] leading-relaxed">
-                    {s.text}
-                  </p>
-                  <p className="text-sm text-[var(--muted)] leading-relaxed">
-                    {s.translation}
-                  </p>
-                  {s.lessonId && (
-                    <div className="text-[10px] text-[var(--meta)] font-[var(--font-mono)]">
-                      来自课时 #{s.lessonId} · 定位到 {formatTime(s.audioStart)}
+            {sentences.map(s => {
+              const isCurrentlyPlaying = playingSentenceId === s.id
+              return (
+                <div
+                  key={s.id}
+                  className="p-4 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-warm)] flex flex-col sm:flex-row justify-between gap-4 shadow-sm hover:border-[var(--border)] transition"
+                >
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-start gap-2.5">
+                      <button
+                        onClick={() => playOriginalSentenceAudio(s.id, s.lessonId, s.audioStart, s.audioEnd)}
+                        className={cn(
+                          "mt-1 p-1.5 rounded-full border transition shrink-0 inline-flex items-center justify-center cursor-pointer text-xs",
+                          isCurrentlyPlaying
+                            ? "bg-[var(--accent)] text-white border-[var(--accent)] animate-pulse"
+                            : "bg-[var(--surface)] border-[var(--border)] text-[var(--muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]"
+                        )}
+                        type="button"
+                        title={isCurrentlyPlaying ? '暂停播放' : '播放原文'}
+                      >
+                        {isCurrentlyPlaying ? '⏸' : '🔊'}
+                      </button>
+                      <p className="font-semibold text-[var(--fg)] text-base font-[var(--font-display)] leading-relaxed flex-1">
+                        {s.text}
+                      </p>
                     </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                  {s.lessonId && (
-                    <Link
-                      to={`/courses/${s.lessonId}?t=${Math.floor(s.audioStart)}`}
-                      className="px-3 py-1.5 rounded-[var(--radius-pill)] bg-[var(--accent)] text-[var(--accent-on)] text-xs font-bold hover:opacity-90 transition cursor-pointer"
+                    <p className="text-sm text-[var(--muted)] leading-relaxed pl-8">
+                      {s.translation}
+                    </p>
+                    {s.lessonId && (
+                      <div className="text-[10px] text-[var(--meta)] font-[var(--font-mono)] pl-8">
+                        来自课时 #{s.lessonId} · 原文音频定位 {formatTime(s.audioStart)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    {s.lessonId && (
+                      <Link
+                        to={`/courses/${s.lessonId}?t=${Math.floor(s.audioStart)}`}
+                        className="px-3 py-1.5 rounded-[var(--radius-pill)] bg-[var(--accent)] text-[var(--accent-on)] text-xs font-bold hover:opacity-90 transition cursor-pointer"
+                      >
+                        🔗 定位点读
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => deleteSentence(s.id)}
+                      className="p-2 rounded hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] text-sm transition cursor-pointer"
+                      title="删除例句"
                     >
-                      🔗 定位点读
-                    </Link>
-                  )}
-                  <button
-                    onClick={() => deleteSentence(s.id)}
-                    className="p-2 rounded hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] text-sm transition cursor-pointer"
-                    title="删除例句"
-                  >
-                    🗑️
-                  </button>
+                      🗑️
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )
       )}

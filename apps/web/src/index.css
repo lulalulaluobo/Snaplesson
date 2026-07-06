@@ -1488,7 +1488,7 @@
   }
 
   @media (max-width: 560px) {
-    .app {
+    :root, .app {
       --player-h: calc(146px + env(safe-area-inset-bottom));
     }
 
