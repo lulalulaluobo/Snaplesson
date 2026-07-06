@@ -69,11 +69,9 @@ export function VocabPage() {
   }
 
   const pronounceWord = (word: string) => {
-    if (!window.speechSynthesis) return
-    window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(word)
-    utter.lang = 'en-US'
-    window.speechSynthesis.speak(utter)
+    const url = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`
+    const audio = new Audio(url)
+    audio.play().catch((err) => console.error('播放发音失败:', err))
   }
 
   if (loading) {

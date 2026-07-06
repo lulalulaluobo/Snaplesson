@@ -55,11 +55,6 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
   const [loopSentence, setLoopSentence] = useState(false)
   const [activeCueId, setActiveCueId] = useState<string | null>(null)
 
-  // Voice recording (shadowing) states
-  const [recordingCueId, setRecordingCueId] = useState<string | null>(null)
-  const [recordedUrls, setRecordedUrls] = useState<Record<string, string>>({})
-  const [playingRecordId, setPlayingRecordId] = useState<string | null>(null)
-
   // Dictionary modal states
   const [selectedWord, setSelectedWord] = useState<string | null>(null)
   const [wordTranslation, setWordTranslation] = useState<{
@@ -74,10 +69,7 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
   const [savedReviews, setSavedReviews] = useState<SavedReview[]>([])
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
   const rafIdRef = useRef<number | null>(null)
-  const recordingAudioRef = useRef<HTMLAudioElement | null>(null)
 
   // 1. Fetch lesson information & subtitles
   useEffect(() => {
@@ -139,6 +131,16 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
       console.error('Failed to fetch bookmarks:', e)
     }
   }
+
+  // 1.5. Auto Scroll Active Card to Center
+  useEffect(() => {
+    if (activeCueId) {
+      const element = document.getElementById(`cue-${activeCueId}`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+  }, [activeCueId])
 
   // 2. High-precision animation frame loop for player progress and single-sentence loop checking
   useEffect(() => {
@@ -268,14 +270,11 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
     }
   }
 
-  // Pronounce word using browser speech synthesis
+  // Pronounce word using Youdao audio pronunciation
   const pronounceWord = (word: string) => {
-    if (!window.speechSynthesis) return
-    // Cancel any current speech
-    window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(word)
-    utter.lang = 'en-US'
-    window.speechSynthesis.speak(utter)
+    const url = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`
+    const audio = new Audio(url)
+    audio.play().catch((err) => console.error('播放发音失败:', err))
   }
 
   // Bookmarking a Word
@@ -330,88 +329,7 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
     }
   }
 
-  // Mic recording for shadowing
-  const startRecording = async (cueId: string) => {
-    // Pause main player
-    if (audioRef.current && isPlaying) {
-      audioRef.current.pause()
-      setIsPlaying(false)
-    }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
-      mediaRecorderRef.current = mediaRecorder
-      audioChunksRef.current = []
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data)
-        }
-      }
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        const audioUrl = URL.createObjectURL(audioBlob)
-        setRecordedUrls(prev => ({
-          ...prev,
-          [cueId]: audioUrl
-        }))
-        setRecordingCueId(null)
-      }
-
-      setRecordingCueId(cueId)
-      mediaRecorder.start()
-    } catch (err) {
-      console.error('Failed to get media devices:', err)
-      alert('无法录音。在非 HTTPS/localhost 环境中，浏览器可能隐藏了录音权限，请配置安全上下文。')
-    }
-  }
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop()
-      // Stop mic tracks
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop())
-    }
-  }
-
-  const playRecord = (cueId: string) => {
-    const url = recordedUrls[cueId]
-    if (!url) return
-
-    if (playingRecordId === cueId) {
-      if (recordingAudioRef.current) {
-        recordingAudioRef.current.pause()
-      }
-      setPlayingRecordId(null)
-      return
-    }
-
-    // Stop current play if any
-    if (recordingAudioRef.current) {
-      recordingAudioRef.current.pause()
-    }
-
-    const audio = new Audio(url)
-    recordingAudioRef.current = audio
-    setPlayingRecordId(cueId)
-    audio.play().catch(() => setPlayingRecordId(null))
-    audio.onended = () => {
-      setPlayingRecordId(null)
-    }
-  }
-
-  const deleteRecord = (cueId: string) => {
-    if (recordedUrls[cueId]) {
-      URL.revokeObjectURL(recordedUrls[cueId])
-      setRecordedUrls(prev => {
-        const copy = { ...prev }
-        delete copy[cueId]
-        return copy
-      })
-    }
-  }
 
   // Word splitting for clicking
   const renderSentenceWords = (english: string) => {
@@ -492,20 +410,18 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
       <div className="flex-1 max-w-2xl mx-auto w-full px-4 py-6 space-y-4">
         {cues.map((cue) => {
           const isActive = activeCueId === cue.id
-          const hasRecord = !!recordedUrls[cue.id]
-          const isRec = recordingCueId === cue.id
-          const isPlayRec = playingRecordId === cue.id
           const isSavedSent = isSentenceSaved(cue.english)
 
           return (
             <div
+              id={`cue-${cue.id}`}
               key={cue.id}
               onClick={() => handleSeekCue(cue)}
               className={cn(
-                "p-4 rounded-[var(--radius-lg)] border bg-[var(--surface-warm)] transition duration-200 cursor-pointer shadow-sm relative",
+                "p-4 rounded-[var(--radius-lg)] border transition duration-200 cursor-pointer shadow-sm relative",
                 isActive
-                  ? "border-[var(--accent)] ring-2 ring-[color-mix(in_srgb,var(--accent)_15%,transparent)]"
-                  : "border-[var(--border-soft)] hover:border-[var(--border)]"
+                  ? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface-warm))] ring-2 ring-[color-mix(in_srgb,var(--accent)_15%,transparent)]"
+                  : "border-[var(--border-soft)] bg-[var(--surface-warm)] hover:border-[var(--border)]"
               )}
             >
               {/* Timing code (hidden or small top right) */}
@@ -517,7 +433,10 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
               <div className="space-y-2 pr-12">
                 {/* English text (word clickable) */}
                 {subtitleMode !== 'zh' && (
-                  <p className="font-semibold text-lg leading-relaxed tracking-wide font-[var(--font-display)] text-[var(--fg)]">
+                  <p className={cn(
+                    "text-lg leading-relaxed tracking-wide font-[var(--font-display)] transition duration-200",
+                    isActive ? "text-[var(--accent)] font-bold" : "text-[var(--fg)] font-semibold"
+                  )}>
                     {renderSentenceWords(cue.english)}
                   </p>
                 )}
@@ -529,70 +448,8 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
                 )}
               </div>
 
-              {/* Action buttons (record, bookmark, play record) */}
+              {/* Action buttons (bookmark) */}
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--border-soft)_50%,transparent)] pt-3">
-                {/* Mic Record Button */}
-                {!hasRecord ? (
-                  <button
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      startRecording(cue.id)
-                    }}
-                    onMouseUp={(e) => {
-                      e.stopPropagation()
-                      stopRecording()
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      startRecording(cue.id)
-                    }}
-                    onTouchEnd={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      stopRecording()
-                    }}
-                    className={cn(
-                      "px-3 py-1.5 rounded-[var(--radius-pill)] text-xs font-bold border transition cursor-pointer flex items-center gap-1.5",
-                      isRec
-                        ? "bg-[var(--danger)] text-white border-[var(--danger)] animate-pulse"
-                        : "bg-[var(--surface)] border-[var(--border)] text-[var(--muted)] hover:text-[var(--fg)]"
-                    )}
-                    type="button"
-                  >
-                    🎤 {isRec ? '松开停止' : '按住跟读'}
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        playRecord(cue.id)
-                      }}
-                      className={cn(
-                        "px-3 py-1.5 rounded-[var(--radius-pill)] text-xs font-bold transition cursor-pointer flex items-center gap-1",
-                        isPlayRec
-                          ? "bg-[var(--accent)] text-white"
-                          : "bg-[var(--surface)] border border-[var(--border)] text-[var(--fg)]"
-                      )}
-                      type="button"
-                    >
-                      🗣️ {isPlayRec ? '停止播放' : '听我跟读'}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteRecord(cue.id)
-                      }}
-                      className="p-1.5 rounded-full hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] text-xs transition cursor-pointer"
-                      type="button"
-                      title="删除跟读录音"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                )}
-
                 {/* Bookmark Sentence button */}
                 <button
                   onClick={(e) => {
