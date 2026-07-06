@@ -93,5 +93,35 @@ export async function handleAdminRoutes(req, res, url, ctx) {
     return true
   }
 
+  // 4. POST /api/admin/users/reset-password
+  if (url.pathname === '/api/admin/users/reset-password' && req.method === 'POST') {
+    try {
+      const { username } = await parseJsonBody(req)
+      if (!username || username === user.username) {
+        json(res, 400, { error: '非法操作' })
+        return true
+      }
+      const target = db.prepare('SELECT role FROM users WHERE username = ?').get(username)
+      if (!target) {
+        json(res, 404, { error: '用户未找到' })
+        return true
+      }
+      if (target.role === 'admin') {
+        json(res, 400, { error: '无法重置管理员密码' })
+        return true
+      }
+      const { hashPassword } = ctx
+      const { salt, hash } = hashPassword('123456')
+      db.prepare('UPDATE users SET salt = ?, passwordHash = ? WHERE username = ?').run(salt, hash, username)
+      // Invalidate all existing sessions for this user
+      db.prepare('DELETE FROM sessions WHERE username = ?').run(username)
+      json(res, 200, { ok: true })
+    } catch (err) {
+      console.error('Reset password failed:', err)
+      json(res, 500, { error: '重置密码失败' })
+    }
+    return true
+  }
+
   return false
 }

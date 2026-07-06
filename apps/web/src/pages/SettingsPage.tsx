@@ -51,6 +51,14 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
+  // Change-password state
+  const [pwOld, setPwOld] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwError, setPwError] = useState<string | null>(null)
+  const [pwSuccess, setPwSuccess] = useState<string | null>(null)
+
   // Keep track of originally set state for API keys
   const [origHasLlmKey, setOrigHasLlmKey] = useState(false)
   const [origHasOcrKey, setOrigHasOcrKey] = useState(false)
@@ -94,6 +102,45 @@ export function SettingsPage() {
 
     fetchSettings()
   }, [])
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPwError(null)
+    setPwSuccess(null)
+    if (!pwOld || !pwNew || !pwConfirm) {
+      setPwError('请填写所有密码字段')
+      return
+    }
+    if (pwNew !== pwConfirm) {
+      setPwError('新密码与确认密码不一致')
+      return
+    }
+    if (pwNew.length < 4) {
+      setPwError('新密码长度至少 4 位')
+      return
+    }
+    setPwSaving(true)
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: pwOld, newPassword: pwNew }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setPwSuccess('密码修改成功！')
+        setPwOld('')
+        setPwNew('')
+        setPwConfirm('')
+      } else {
+        setPwError(data.error || '修改失败，请重试')
+      }
+    } catch {
+      setPwError('网络错误，请稍后重试')
+    } finally {
+      setPwSaving(false)
+    }
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -428,6 +475,71 @@ export function SettingsPage() {
             disabled={saving}
           >
             {saving ? '正在保存...' : '💾 保存 AI 接口配置'}
+          </button>
+        </div>
+      </form>
+
+      {/* ── Change Password ────────────────────────── */}
+      <form onSubmit={handleChangePassword} className="mt-8 space-y-4 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] p-6">
+        <div className="border-b border-[var(--border-soft)] pb-3">
+          <h2 className="font-[var(--font-display)] text-base font-bold">🔒 修改登录密码</h2>
+          <p className="mt-1 text-xs text-[var(--muted)]">修改后当前设备仍保持登录，其他设备需重新登录</p>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-[var(--fg-2)] mb-1">当前密码</label>
+            <input
+              type="password"
+              value={pwOld}
+              onChange={e => setPwOld(e.target.value)}
+              placeholder="输入当前密码"
+              className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--fg)] outline-none focus:border-[var(--accent)] transition"
+              autoComplete="current-password"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[var(--fg-2)] mb-1">新密码</label>
+            <input
+              type="password"
+              value={pwNew}
+              onChange={e => setPwNew(e.target.value)}
+              placeholder="至少 4 位"
+              className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--fg)] outline-none focus:border-[var(--accent)] transition"
+              autoComplete="new-password"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[var(--fg-2)] mb-1">确认新密码</label>
+            <input
+              type="password"
+              value={pwConfirm}
+              onChange={e => setPwConfirm(e.target.value)}
+              placeholder="再次输入新密码"
+              className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--fg)] outline-none focus:border-[var(--accent)] transition"
+              autoComplete="new-password"
+            />
+          </div>
+        </div>
+
+        {pwError && (
+          <div className="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] p-3 text-xs font-semibold text-[var(--danger)]">
+            {pwError}
+          </div>
+        )}
+        {pwSuccess && (
+          <div className="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--success)_30%,transparent)] bg-[color-mix(in_srgb,var(--success)_8%,transparent)] p-3 text-xs font-semibold text-[var(--success)]">
+            {pwSuccess}
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={pwSaving}
+            className="px-6 py-2.5 rounded-[var(--radius-md)] bg-[var(--fg)] text-[var(--bg)] text-sm font-bold hover:opacity-85 transition cursor-pointer disabled:opacity-50"
+          >
+            {pwSaving ? '修改中...' : '🔒 确认修改密码'}
           </button>
         </div>
       </form>

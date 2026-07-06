@@ -80,6 +80,25 @@ export function AdminPage({ currentUsername }: AdminPageProps) {
     }
   }
 
+  const resetUserPassword = async (username: string) => {
+    if (!window.confirm(`确定将用户 "${username}" 的密码重置为 123456 吗？该用户的登录会话将同时失效。`)) return
+    try {
+      const res = await fetch('/api/admin/users/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      })
+      if (res.ok) {
+        alert(`用户 "${username}" 的密码已重置为 123456，请通知用户登录后修改密码。`)
+      } else {
+        const data = await res.json()
+        alert(data.error || '重置密码失败')
+      }
+    } catch {
+      alert('网络错误')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center text-[var(--muted)]">
@@ -146,13 +165,22 @@ export function AdminPage({ currentUsername }: AdminPageProps) {
                         {u.disabled ? '启用' : '禁用'}
                       </button>
                       {u.role !== 'admin' && (
-                        <button
-                          onClick={() => deleteUser(u.username)}
-                          className="px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-bold bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white transition cursor-pointer"
-                          type="button"
-                        >
-                          删除
-                        </button>
+                        <>
+                          <button
+                            onClick={() => resetUserPassword(u.username)}
+                            className="px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-bold bg-[color-mix(in_srgb,var(--warn)_12%,transparent)] text-[color-mix(in_srgb,var(--warn),black_30%)] hover:bg-[var(--warn)] hover:text-white transition cursor-pointer"
+                            type="button"
+                          >
+                            重置密码
+                          </button>
+                          <button
+                            onClick={() => deleteUser(u.username)}
+                            className="px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-bold bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white transition cursor-pointer"
+                            type="button"
+                          >
+                            删除
+                          </button>
+                        </>
                       )}
                     </>
                   )}
@@ -188,7 +216,7 @@ export function AdminPage({ currentUsername }: AdminPageProps) {
 
             {/* Actions for mobile (ensure at least 44x44px touch region) */}
             {u.username !== currentUsername && (
-              <div className="flex items-center justify-end gap-2 border-t border-[color-mix(in_srgb,var(--border-soft)_50%,transparent)] pt-3">
+              <div className="flex items-center justify-end gap-2 border-t border-[color-mix(in_srgb,var(--border-soft)_50%,transparent)] pt-3 flex-wrap">
                 <button
                   onClick={() => toggleStatus(u.username, u.disabled)}
                   className={`min-h-[44px] min-w-[70px] px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-bold transition cursor-pointer ${
@@ -199,13 +227,22 @@ export function AdminPage({ currentUsername }: AdminPageProps) {
                   {u.disabled ? '启用账号' : '禁用账号'}
                 </button>
                 {u.role !== 'admin' && (
-                  <button
-                    onClick={() => deleteUser(u.username)}
-                    className="min-h-[44px] min-w-[70px] px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-bold bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] active:bg-[var(--danger)] active:text-white transition cursor-pointer"
-                    type="button"
-                  >
-                    删除用户
-                  </button>
+                  <>
+                    <button
+                      onClick={() => resetUserPassword(u.username)}
+                      className="min-h-[44px] min-w-[70px] px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-bold bg-[color-mix(in_srgb,var(--warn)_12%,transparent)] text-[color-mix(in_srgb,var(--warn),black_30%)] active:bg-[var(--warn)] active:text-white transition cursor-pointer"
+                      type="button"
+                    >
+                      重置密码
+                    </button>
+                    <button
+                      onClick={() => deleteUser(u.username)}
+                      className="min-h-[44px] min-w-[70px] px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-bold bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] active:bg-[var(--danger)] active:text-white transition cursor-pointer"
+                      type="button"
+                    >
+                      删除用户
+                    </button>
+                  </>
                 )}
               </div>
             )}
