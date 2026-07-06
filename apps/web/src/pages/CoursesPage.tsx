@@ -17,6 +17,7 @@ interface CourseLesson {
   level: string
   courseId: string
   username?: string
+  shared?: boolean
   resources: {
     lesson: string
     subtitle: string
@@ -112,6 +113,25 @@ export function CoursesPage() {
     } catch (e) {
       console.error(e)
       alert('删除失败，网络异常')
+    }
+  }
+
+  const handleToggleShare = async (lessonId: string, currentShared: boolean) => {
+    try {
+      const res = await fetch(`/api/courses/lessons/${lessonId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shared: !currentShared })
+      })
+      if (res.ok) {
+        setLessons(prev => prev.map(l => l.id === lessonId ? { ...l, shared: !currentShared } : l))
+      } else {
+        const errData = await res.json()
+        alert(errData.error || '修改共享状态失败')
+      }
+    } catch (e) {
+      console.error(e)
+      alert('网络连接异常')
     }
   }
 
@@ -457,7 +477,7 @@ export function CoursesPage() {
                             className="flex flex-col justify-between p-5 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] shadow-sm hover:border-[var(--accent)] transition duration-200 h-full min-h-[140px]"
                           >
                             <div>
-                              <div className={cn("flex items-center justify-between gap-2 pr-6", canDelete ? "pl-5" : "")}>
+                              <div className={cn("flex items-center justify-between gap-2 pr-20", canDelete ? "pl-5" : "")}>
                                 <span className="font-[var(--font-mono)] text-[10px] font-semibold text-[var(--meta)]">
                                   #{item.id}
                                 </span>
@@ -467,7 +487,7 @@ export function CoursesPage() {
                                   </span>
                                 )}
                               </div>
-                              <h3 className={cn("mt-3 font-semibold text-[var(--fg)] text-base line-clamp-2 pr-6", canDelete ? "pl-5" : "")}>
+                              <h3 className={cn("mt-3 font-semibold text-[var(--fg)] text-base line-clamp-2 pr-20", canDelete ? "pl-5" : "")}>
                                 {item.title}
                               </h3>
                             </div>
@@ -479,17 +499,35 @@ export function CoursesPage() {
                             </div>
                           </Link>
                           {canDelete && (
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                handleDeleteLesson(item.id)
-                              }}
-                              className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-[var(--surface)] border border-[var(--border-soft)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] transition cursor-pointer text-xs leading-none shadow-sm z-10"
-                              title="删除课程"
-                            >
-                              🗑️
-                            </button>
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleToggleShare(item.id, !!item.shared)
+                                }}
+                                className={cn(
+                                  "absolute top-3.5 right-[42px] px-2 py-1 rounded-[var(--radius-pill)] border text-[10px] font-extrabold transition cursor-pointer z-10 shadow-sm leading-none h-[26px] flex items-center justify-center",
+                                  item.shared
+                                    ? "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] border-[var(--accent)] text-[var(--accent)]"
+                                    : "bg-[var(--surface)] border-[var(--border-soft)] text-[var(--muted)] hover:text-[var(--fg)] hover:border-[var(--border)]"
+                                )}
+                                title={item.shared ? "点击取消共享" : "点击共享给其他用户"}
+                              >
+                                {item.shared ? "🌐 共享" : "🔒 私有"}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleDeleteLesson(item.id)
+                                }}
+                                className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-[var(--surface)] border border-[var(--border-soft)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] transition cursor-pointer text-xs leading-none shadow-sm z-10 h-[26px] w-[26px] flex items-center justify-center"
+                                title="删除课程"
+                              >
+                                🗑️
+                              </button>
+                            </>
                           )}
                         </div>
                       )
@@ -532,7 +570,7 @@ export function CoursesPage() {
                             className="flex flex-col justify-between p-5 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-warm)] shadow-sm hover:border-[var(--accent)] transition duration-200 h-full min-h-[140px]"
                           >
                             <div>
-                              <div className={cn("flex items-center justify-between gap-2 pr-6", canDelete ? "pl-5" : "")}>
+                              <div className={cn("flex items-center justify-between gap-2 pr-20", canDelete ? "pl-5" : "")}>
                                 <span className="font-[var(--font-mono)] text-[10px] font-semibold text-[var(--meta)]">
                                   #{item.id}
                                 </span>
@@ -542,7 +580,7 @@ export function CoursesPage() {
                                   </span>
                                 )}
                               </div>
-                              <h3 className={cn("mt-3 font-semibold text-[var(--fg)] text-base line-clamp-2 pr-6", canDelete ? "pl-5" : "")}>
+                              <h3 className={cn("mt-3 font-semibold text-[var(--fg)] text-base line-clamp-2 pr-20", canDelete ? "pl-5" : "")}>
                                 {item.title}
                               </h3>
                             </div>
@@ -554,17 +592,35 @@ export function CoursesPage() {
                             </div>
                           </Link>
                           {canDelete && (
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                handleDeleteLesson(item.id)
-                              }}
-                              className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-[var(--surface)] border border-[var(--border-soft)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] transition cursor-pointer text-xs leading-none shadow-sm z-10"
-                              title="删除课程"
-                            >
-                              🗑️
-                            </button>
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleToggleShare(item.id, !!item.shared)
+                                }}
+                                className={cn(
+                                  "absolute top-3.5 right-[42px] px-2 py-1 rounded-[var(--radius-pill)] border text-[10px] font-extrabold transition cursor-pointer z-10 shadow-sm leading-none h-[26px] flex items-center justify-center",
+                                  item.shared
+                                    ? "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] border-[var(--accent)] text-[var(--accent)]"
+                                    : "bg-[var(--surface)] border-[var(--border-soft)] text-[var(--muted)] hover:text-[var(--fg)] hover:border-[var(--border)]"
+                                )}
+                                title={item.shared ? "点击取消共享" : "点击共享给其他用户"}
+                              >
+                                {item.shared ? "🌐 共享" : "🔒 私有"}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleDeleteLesson(item.id)
+                                }}
+                                className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-[var(--surface)] border border-[var(--border-soft)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] transition cursor-pointer text-xs leading-none shadow-sm z-10 h-[26px] w-[26px] flex items-center justify-center"
+                                title="删除课程"
+                              >
+                                🗑️
+                              </button>
+                            </>
                           )}
                         </div>
                       )

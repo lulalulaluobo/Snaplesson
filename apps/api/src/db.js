@@ -58,6 +58,7 @@ export function createDb(dbPath) {
       subtitlesJson TEXT, -- JSON mapping language keys to file names
       createdAt INTEGER NOT NULL,
       username TEXT, -- Creator user association
+      shared INTEGER NOT NULL DEFAULT 0, -- 0 = private, 1 = shared
       FOREIGN KEY (courseId) REFERENCES courses(id) ON DELETE CASCADE
     );
 
@@ -93,6 +94,11 @@ export function createDb(dbPath) {
     if (!hasUsername) {
       db.exec("ALTER TABLE lessons ADD COLUMN username TEXT")
       console.log("Database migration: Added 'username' column to 'lessons' table.")
+    }
+    const hasShared = tableInfo.some(column => column.name === 'shared')
+    if (!hasShared) {
+      db.exec("ALTER TABLE lessons ADD COLUMN shared INTEGER NOT NULL DEFAULT 0")
+      console.log("Database migration: Added 'shared' column to 'lessons' table.")
     }
   } catch (err) {
     console.error("Failed to run database migration for lessons table:", err)

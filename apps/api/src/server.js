@@ -168,21 +168,38 @@ async function route(req, res) {
     parts.length === 6
   ) {
     const lessonId = parts[4]
-    const mode = url.searchParams.get('mode') ?? 'bilingual'
-    const subtitleModeFiles = new Map([
-      ['en', 'subtitle.srt'],
-      ['zh', 'subtitle.zh.srt'],
-      ['bilingual', 'subtitle.bilingual.srt'],
-      ['off', 'subtitle.bilingual.srt'],
-    ])
-    const subtitleFile = subtitleModeFiles.get(mode) || 'subtitle.bilingual.srt'
-    const fullPath = resourcePathFor(lessonId, subtitleFile)
-    if (!fullPath || !existsSync(fullPath)) {
-      notFound(res)
-      return
-    }
-
     try {
+      const dbLesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(lessonId)
+      if (!dbLesson) {
+        notFound(res)
+        return
+      }
+
+      // Check permission: must be owner, admin, or shared
+      const user = await getAuthenticatedUser(req, db)
+      if (!user) {
+        json(res, 401, { error: '未登录' })
+        return
+      }
+      if (user.role !== 'admin' && dbLesson.username !== user.username && dbLesson.shared !== 1) {
+        json(res, 403, { error: '无权访问该私有课程' })
+        return
+      }
+
+      const mode = url.searchParams.get('mode') ?? 'bilingual'
+      const subtitleModeFiles = new Map([
+        ['en', 'subtitle.srt'],
+        ['zh', 'subtitle.zh.srt'],
+        ['bilingual', 'subtitle.bilingual.srt'],
+        ['off', 'subtitle.bilingual.srt'],
+      ])
+      const subtitleFile = subtitleModeFiles.get(mode) || 'subtitle.bilingual.srt'
+      const fullPath = resourcePathFor(lessonId, subtitleFile)
+      if (!fullPath || !existsSync(fullPath)) {
+        notFound(res)
+        return
+      }
+
       const content = await readFile(fullPath, 'utf8')
       const cues = parseSrt(content)
       if (mode === 'off') {
@@ -211,6 +228,17 @@ async function route(req, res) {
     try {
       const dbLesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(lessonId)
       if (dbLesson) {
+        // Check permission: must be owner, admin, or shared
+        const user = await getAuthenticatedUser(req, db)
+        if (!user) {
+          json(res, 401, { error: '未登录' })
+          return
+        }
+        if (user.role !== 'admin' && dbLesson.username !== user.username && dbLesson.shared !== 1) {
+          json(res, 403, { error: '无权访问该私有课程' })
+          return
+        }
+
         let subtitles = { en: 'subtitle.srt', zh: 'subtitle.zh.srt', bilingual: 'subtitle.bilingual.srt' }
         try {
           if (dbLesson.subtitlesJson) {
@@ -248,7 +276,9 @@ async function route(req, res) {
             subtitle: true,
             transcript: false
           },
-          courseId: dbLesson.courseId
+          courseId: dbLesson.courseId,
+          username: dbLesson.username,
+          shared: dbLesson.shared === 1
         })
       } else {
         notFound(res)
@@ -268,7 +298,30 @@ async function route(req, res) {
     parts[1] === 'resources' &&
     parts.length === 4
   ) {
-    await sendResource(req, res, parts[2], parts[3])
+    const lessonId = parts[2]
+    try {
+      const dbLesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(lessonId)
+      if (!dbLesson) {
+        notFound(res)
+        return
+      }
+
+      // Check permission: must be owner, admin, or shared
+      const user = await getAuthenticatedUser(req, db)
+      if (!user) {
+        json(res, 401, { error: '未登录' })
+        return
+      }
+      if (user.role !== 'admin' && dbLesson.username !== user.username && dbLesson.shared !== 1) {
+        json(res, 403, { error: '无权访问该私有课程资源' })
+        return
+      }
+
+      await sendResource(req, res, parts[2], parts[3])
+    } catch (err) {
+      console.error('Failed to serve resource:', err)
+      notFound(res)
+    }
     return
   }
 

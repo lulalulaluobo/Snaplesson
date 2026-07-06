@@ -10,8 +10,24 @@ export async function handleCoursesRoutes(req, res, url, ctx) {
 
   // 1. GET /api/courses
   if (pathname === '/api/courses' && method === 'GET') {
+    const user = await getAuthenticatedUser(req, db)
+    if (!user) {
+      json(res, 401, { error: '未登录' })
+      return true
+    }
+
     try {
-      const dbLessons = db.prepare('SELECT * FROM lessons ORDER BY createdAt DESC').all()
+      let dbLessons
+      if (user.role === 'admin') {
+        dbLessons = db.prepare('SELECT * FROM lessons ORDER BY createdAt DESC').all()
+      } else {
+        dbLessons = db.prepare(`
+          SELECT * FROM lessons 
+          WHERE username = ? OR shared = 1 
+          ORDER BY createdAt DESC
+        `).all(user.username)
+      }
+
       const customLessons = dbLessons.map(dbLesson => {
         let subtitles = { en: 'subtitle.srt', zh: 'subtitle.zh.srt', bilingual: 'subtitle.bilingual.srt' }
         try {
@@ -51,7 +67,8 @@ export async function handleCoursesRoutes(req, res, url, ctx) {
             transcript: false
           },
           courseId: dbLesson.courseId,
-          username: dbLesson.username
+          username: dbLesson.username,
+          shared: dbLesson.shared === 1
         }
       })
 
@@ -242,6 +259,43 @@ export async function handleCoursesRoutes(req, res, url, ctx) {
       json(res, 200, { success: true })
     } catch (err) {
       console.error('Batch delete lessons failed:', err)
+      json(res, 500, { error: '服务内部错误' })
+    }
+    return true
+  }
+
+  // 7. POST /api/courses/lessons/:id/share
+  if (pathname.startsWith('/api/courses/lessons/') && pathname.endsWith('/share') && method === 'POST') {
+    const user = await getAuthenticatedUser(req, db)
+    if (!user) {
+      json(res, 401, { error: '未登录' })
+      return true
+    }
+
+    const suffixLength = '/share'.length
+    const prefixLength = '/api/courses/lessons/'.length
+    const lessonId = decodeURIComponent(pathname.slice(prefixLength, pathname.length - suffixLength))
+
+    try {
+      const lesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(lessonId)
+      if (!lesson) {
+        json(res, 404, { error: '课程不存在' })
+        return true
+      }
+
+      // Check permission: only creator or admin can share
+      if (user.role !== 'admin' && lesson.username !== user.username) {
+        json(res, 403, { error: '权限不足，无法设置该课程共享状态' })
+        return true
+      }
+
+      const { shared } = await parseJsonBody(req)
+      const targetSharedVal = shared ? 1 : 0
+
+      db.prepare('UPDATE lessons SET shared = ? WHERE id = ?').run(targetSharedVal, lessonId)
+      json(res, 200, { success: true, shared: shared === true })
+    } catch (err) {
+      console.error('Update lesson share status failed:', err)
       json(res, 500, { error: '服务内部错误' })
     }
     return true
