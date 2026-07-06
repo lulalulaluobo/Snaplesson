@@ -294,7 +294,7 @@ export function createServer() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const port = Number(process.env.PORT ?? 4173)
+  const port = Number(process.env.PORT ?? 4180)
   createServer().listen(port, () => {
     console.log(`SnapLesson API listening on http://localhost:${port}`)
   })

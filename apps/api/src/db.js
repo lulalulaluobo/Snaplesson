@@ -35,7 +35,7 @@ export function createDb(dbPath) {
       tts_base_url TEXT,
       tts_api_key TEXT,
       tts_model TEXT,
-      ocr_provider TEXT DEFAULT 'mimo',
+      ocr_provider TEXT DEFAULT 'unisound',
       ocr_base_url TEXT,
       ocr_api_key TEXT,
       ocr_model TEXT,

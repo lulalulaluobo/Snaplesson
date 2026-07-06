@@ -188,7 +188,7 @@ export async function generateUnisoundTTS(text, voice, apiKey, baseUrl = DEFAULT
       volume: 50,
       pitch: 50,
       bright: 50,
-      language: 'en'
+      language: 'zh'
     },
     audio_setting: {
       audio_sample_rate: 16000,
@@ -218,7 +218,9 @@ export async function generateUnisoundTTS(text, voice, apiKey, baseUrl = DEFAULT
     }
 
     const data = await response.json()
-    if (data?.base_resp?.status_code !== 0) throw new Error('Unisound task creation returned error')
+    if (data?.base_resp?.status_code !== 0) {
+      throw new Error(`Unisound task creation returned error: ${JSON.stringify(data)}`)
+    }
     taskId = data.task_id
     break
   }

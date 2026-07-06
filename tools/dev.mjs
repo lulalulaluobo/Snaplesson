@@ -5,7 +5,7 @@ const processes = [
   {
     name: 'api',
     args: ['run', 'dev:api'],
-    env: { PORT: process.env.PORT ?? '4173' },
+    env: { PORT: process.env.PORT ?? '4180' },
   },
   {
     name: 'web',

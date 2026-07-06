@@ -1,0 +1,43 @@
+1
+00:00:00,000 --> 00:00:07,432
+Tom walked into a library and said, “I’d like a burger, fries, and a large cola.”
+
+2
+00:00:07,432 --> 00:00:13,891
+The librarian stared at him and whispered, “Sir, this is a library.”
+
+3
+00:00:13,891 --> 00:00:15,959
+Tom looked embarrassed.
+
+4
+00:00:15,959 --> 00:00:23,032
+He leaned closer and whispered, “Sorry… I’d like a burger, fries, and a large cola.”
+
+5
+00:00:23,032 --> 00:00:25,243
+The librarian sighed.
+
+6
+00:00:25,243 --> 00:00:27,455
+“We don’t serve food here.”
+
+7
+00:00:27,455 --> 00:00:29,775
+Tom nodded seriously.
+
+8
+00:00:29,775 --> 00:00:31,195
+“That’s okay.”
+
+9
+00:00:31,195 --> 00:00:35,423
+“Then I’ll just eat the book about sandwiches.”
+
+10
+00:00:35,423 --> 00:00:37,923
+“Is it in the delicious section?”
+
+11
+00:00:37,923 --> 00:00:45,212
+The librarian said, “No, but your joke definitely belongs in the fiction section.”

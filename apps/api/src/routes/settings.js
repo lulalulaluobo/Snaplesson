@@ -12,18 +12,18 @@ export function getEffectiveUserSettings(db) {
 
   // Fallback default settings
   const defaults = {
-    openai_base_url: 'https://api.deepseek.com',
-    openai_model: 'deepseek-chat',
+    openai_base_url: 'https://api.openai.com/v1',
+    openai_model: 'gpt-4o-mini',
     openai_api_key: '',
     tts_provider: 'edge',
     tts_voice: 'en-US-EmmaNeural',
-    tts_base_url: '',
+    tts_base_url: 'https://maas-api.unisound.com/v1',
     tts_api_key: '',
-    tts_model: '',
-    ocr_provider: 'mimo',
-    ocr_base_url: 'https://api.xiaomimimo.com',
+    tts_model: 'u2-tts',
+    ocr_provider: 'unisound',
+    ocr_base_url: 'https://maas-api.unisound.com/v1',
     ocr_api_key: '',
-    ocr_model: 'mimo-v2.5'
+    ocr_model: 'u1-ocr'
   }
 
   if (!setting) {
@@ -37,7 +37,7 @@ export function getEffectiveUserSettings(db) {
 }
 
 export async function handleSettingsRoutes(req, res, url, ctx) {
-  if (url.pathname !== '/api/user/settings') return false
+  if (url.pathname !== '/api/settings' && url.pathname !== '/api/user/settings') return false
 
   const { db, getAuthenticatedUser, parseJsonBody, json } = ctx
 

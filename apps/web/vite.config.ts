@@ -10,9 +10,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    port: 5180,
     proxy: {
-      '/api': 'http://localhost:4173',
-      '/resources': 'http://localhost:4173',
+      '/api': 'http://localhost:4180',
+      '/resources': 'http://localhost:4180',
     },
   },
   resolve: {
