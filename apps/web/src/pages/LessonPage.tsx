@@ -496,7 +496,10 @@ export function LessonPage({ theme, onCycleTheme, currentUser, onLogout }: Lesso
       />
 
       {/* Sticky Bottom Control Panel */}
-      <footer className="player fixed bottom-0 left-0 right-0 z-30 h-[var(--player-h)]">
+      <footer
+        className="player fixed bottom-0 left-0 right-0 z-30 min-h-[146px] sm:min-h-[88px] pb-[env(safe-area-inset-bottom)]"
+        style={{ height: 'var(--player-h)' }}
+      >
         {/* 1. Metadata (left) */}
         <div className="now">
           <div className={cn(
