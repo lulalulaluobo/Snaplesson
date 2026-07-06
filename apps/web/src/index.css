@@ -151,31 +151,39 @@
     box-sizing: border-box;
   }
 
-  html,
-  body,
-  #root {
+  html {
     min-height: 100%;
     margin: 0;
-    overflow-x: hidden;
     -webkit-text-size-adjust: 100%;
-  }
-
-  @media (pointer: coarse) {
-    html,
-    body,
-    #root {
-      overscroll-behavior-y: contain;
-    }
+    /* NOTE: do NOT set overflow-x on <html> — mobile Chrome/Edge treats
+       overflow on <html>+<body> simultaneously as a full viewport scroll
+       lock, which kills touch scrolling entirely. */
   }
 
   body {
+    min-height: 100%;
+    margin: 0;
+    overflow-x: hidden;
     background: var(--bg);
     color: var(--fg);
     font-family: var(--font-body);
     font-size: var(--text-base);
     line-height: var(--leading-body);
     overscroll-behavior-x: none;
-    touch-action: pan-y;
+    /* touch-action: manipulation allows pan + pinch-zoom while disabling
+       double-tap-to-zoom delay; pan-y was too restrictive and could
+       conflict with certain scroll containers on mobile. */
+    touch-action: manipulation;
+  }
+
+  @media (pointer: coarse) {
+    body {
+      overscroll-behavior-y: contain;
+    }
+  }
+
+  #root {
+    min-height: 100%;
   }
 
   input,
